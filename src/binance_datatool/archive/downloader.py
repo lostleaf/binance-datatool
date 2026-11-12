@@ -10,8 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from loguru import logger
-
 from binance_datatool.common.progress import ProgressEvent, make_reporter
 
 if TYPE_CHECKING:

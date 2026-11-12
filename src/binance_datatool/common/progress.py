@@ -273,9 +273,7 @@ class TqdmReporter(_ReporterState):
                     precolorized_formats=(
                         dict(handler._precolorized_formats)
                         if handler._colorize
-                        and isinstance(
-                            getattr(handler, "_precolorized_formats", None), dict
-                        )
+                        and isinstance(getattr(handler, "_precolorized_formats", None), dict)
                         else None
                     ),
                     filter_value=handler._filter,

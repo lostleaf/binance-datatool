@@ -37,6 +37,11 @@ tests/
 - **`--run-integration`** — a custom pytest option that unlocks the `integration`
   marker. The default run skips every integration test.
 
+## Continuous Integration
+
+Read `.github/workflows/ci.yml` before changing push or pull-request checks, and
+`.github/workflows/publish.yml` before changing release test gates.
+
 ---
 
 See also: [Extending the Project](../extending.md) | [Architecture](../architecture.md)

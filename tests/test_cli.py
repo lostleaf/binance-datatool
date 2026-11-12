@@ -31,7 +31,7 @@ from binance_datatool.workflow import (
     VerifyResult,
 )
 
-runner = CliRunner()
+runner = CliRunner(env={"TERM": "dumb"})
 
 
 def test_cli_root_help_uses_new_app_name() -> None:
