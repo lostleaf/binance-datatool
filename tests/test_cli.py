@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -661,6 +662,63 @@ def test_cli_download_dry_run_outputs_tsv(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert result.stdout == "new\t1048\tBTCUSDT/BTCUSDT-fundingRate-2026-03.zip\n"
+    stderr_lines = result.stderr.splitlines()
+    assert len(stderr_lines) == 1
+    actual_counts = sorted(map(int, re.findall(r"\b\d+\b", stderr_lines[0])))
+    assert actual_counts == [1, 12]
+
+
+@pytest.mark.parametrize(
+    ("downloaded", "failed", "skipped", "expected_exit_code"),
+    [
+        (1, 0, 2, 0),
+        (0, 0, 12, 0),
+        (1, 2, 3, 2),
+    ],
+)
+def test_cli_download_prints_summary(
+    monkeypatch,
+    downloaded: int,
+    failed: int,
+    skipped: int,
+    expected_exit_code: int,
+) -> None:
+    """Download should print final counts at default verbosity."""
+
+    async def fake_run(self) -> DownloadResult:
+        assert self.dry_run is False
+        return DownloadResult(
+            total_remote=downloaded + failed + skipped,
+            skipped=skipped,
+            downloaded=downloaded,
+            failed=failed,
+            listing_errors=[],
+        )
+
+    monkeypatch.setattr(
+        "binance_datatool.workflow.ArchiveDownloadWorkflow.run",
+        fake_run,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "--archive-home",
+            "/tmp/archive-home",
+            "download",
+            "um",
+            "--type",
+            "fundingRate",
+            "BTCUSDT",
+        ],
+    )
+
+    assert result.exit_code == expected_exit_code
+    assert result.stdout == ""
+    stderr_lines = result.stderr.splitlines()
+    assert len(stderr_lines) == 1
+    actual_counts = sorted(map(int, re.findall(r"\b\d+\b", stderr_lines[0])))
+    assert actual_counts == sorted((downloaded, failed, skipped))
 
 
 def test_cli_download_passes_archive_home_and_proxy_flag(monkeypatch) -> None:
