@@ -21,9 +21,9 @@ QUOTE_ASSETS: tuple[str, ...] = (
     "AEUR", "BIDR", "BKRW", "BUSD", "BVND", "DOGE", "EURI", "GYEN",
     "IDRT", "TUSD", "USD1", "USDC", "USDP", "USDS", "USDT",
     # 3 chars
-    "ARS", "AUD", "BNB", "BRL", "BTC", "COP", "CZK", "DAI", "DOT",
-    "ETH", "EUR", "GBP", "IDR", "JPY", "MXN", "NGN", "PAX", "PLN",
-    "RON", "RUB", "SOL", "TRX", "TRY", "UAH", "USD", "UST", "VAI",
+    "AED", "ARS", "AUD", "BNB", "BRL", "BTC", "COP", "CZK", "DAI", "DOT",
+    "ETH", "EUR", "GBP", "IDR", "JPY", "KZT", "MXN", "NGN", "PAX", "PLN",
+    "RON", "RUB", "SOL", "THB", "TRX", "TRY", "UAH", "USD", "UST", "VAI",
     "XRP", "ZAR",
     # 1 char
     "U",

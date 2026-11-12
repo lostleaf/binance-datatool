@@ -52,6 +52,36 @@ ARCHIVE_ALLOWLIST: dict[TradeType, set[str]] = {
             ),
         ),
         (
+            "USDTKZT",
+            SpotSymbolInfo(
+                symbol="USDTKZT",
+                base_asset="USDT",
+                quote_asset="KZT",
+                is_leverage=False,
+                is_stable_pair=False,
+            ),
+        ),
+        (
+            "ASTERTHB",
+            SpotSymbolInfo(
+                symbol="ASTERTHB",
+                base_asset="ASTER",
+                quote_asset="THB",
+                is_leverage=False,
+                is_stable_pair=False,
+            ),
+        ),
+        (
+            "USDCAED",
+            SpotSymbolInfo(
+                symbol="USDCAED",
+                base_asset="USDC",
+                quote_asset="AED",
+                is_leverage=False,
+                is_stable_pair=False,
+            ),
+        ),
+        (
             "BNBUPUSDT",
             SpotSymbolInfo(
                 symbol="BNBUPUSDT",
