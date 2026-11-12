@@ -83,3 +83,18 @@
 - `temp/` is git-ignored and may contain temporary or non-public materials.
 - Do not treat `temp/` as part of the public package surface or public project documentation.
 - Keep checked-in guidance focused on the package and stable workflows, not on transient working files.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in this repo's GitHub Issues (via the `gh` CLI). See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage roles map to labels of the same name. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
