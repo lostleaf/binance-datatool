@@ -182,7 +182,8 @@ async def run(self) -> DiffResult | DownloadResult
 1. Delegates to `ArchiveListFilesWorkflow` to fetch remote file metadata for all
    requested symbols concurrently.
 2. Computes a diff by comparing each remote file against
-   `archive_home / Path(remote.key)`. A file is skipped when its local copy exists and
+   `archive_home / Path(remote.key)`. A file is skipped only when its local copy exists,
+   its size matches the remote listing, it has no sibling `.aria2` control file, and
    `local_mtime >= remote_last_modified`; otherwise it is classified as `"new"`
    or `"updated"`.
 3. In dry-run mode, returns a `DiffResult` immediately.

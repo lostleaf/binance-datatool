@@ -86,6 +86,8 @@ class ArchiveDownloadWorkflow:
                 local_path = self.archive_home / Path(remote_file.key)
                 if (
                     local_path.exists()
+                    and local_path.stat().st_size == remote_file.size
+                    and not local_path.with_name(f"{local_path.name}.aria2").exists()
                     and local_path.stat().st_mtime >= remote_file.last_modified.timestamp()
                 ):
                     skipped += 1

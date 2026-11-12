@@ -259,8 +259,10 @@ For each remote file, the workflow checks the local path at
 | Local state | Action | Reason |
 |-------------|--------|--------|
 | File does not exist | Download | `new` |
+| File exists, but its size differs from the remote listing | Download | `updated` |
+| File exists with a sibling `<filename>.aria2` control file | Download | `updated` |
 | File exists, `local_mtime < remote_last_modified` | Download | `updated` |
-| File exists, `local_mtime >= remote_last_modified` | Skip | up to date |
+| File exists with matching size, no control file, and `local_mtime >= remote_last_modified` | Skip | up to date |
 
 When a file is classified as `updated`, any stale `.verified` markers for the
 corresponding zip file are deleted before downloading. Both legacy markers
@@ -332,10 +334,10 @@ User runs:
   ┌──────────────────────▼───────────────────────────────┐
   │ Workflow  (workflow/)                  │
   │  Delegates to ArchiveListFilesWorkflow for remote    │
-  │  listing; computes diff (new/updated/skipped) by     │
-  │  comparing local timestamps; invalidates stale       │
-  │  .verified markers; deletes stale local copies;      │
-  │  invokes aria2 downloader with per-file retry.       │
+  │  listing; computes diff (new/updated/skipped) using  │
+  │  local size, aria2 state, and timestamps;            │
+  │  invalidates stale .verified markers; deletes stale  │
+  │  local copies; invokes aria2 downloader with retry.  │
   └──────────────────────┬───────────────────────────────┘
                          │
           ┌──────────────┴──────────────┐

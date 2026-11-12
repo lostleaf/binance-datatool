@@ -239,7 +239,7 @@ def test_archive_list_files_workflow_rejects_interval_for_non_kline_types() -> N
 
 @pytest.mark.asyncio
 async def test_archive_download_workflow_builds_new_updated_and_skipped_diff(tmp_path) -> None:
-    """Download diffing should classify files by timestamp freshness."""
+    """Download diffing should classify new, stale, and complete local files."""
     remote_new = ArchiveFile(
         key="data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-01.zip",
         size=100,
@@ -249,7 +249,7 @@ async def test_archive_download_workflow_builds_new_updated_and_skipped_diff(tmp
         key=(
             "data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-02.zip.CHECKSUM"
         ),
-        size=10,
+        size=12,
         last_modified=datetime(2026, 4, 2, 8, 6, 34, tzinfo=UTC),
     )
     remote_skipped = ArchiveFile(
@@ -265,7 +265,7 @@ async def test_archive_download_workflow_builds_new_updated_and_skipped_diff(tmp
 
     skipped_local = tmp_path / Path(remote_skipped.key)
     skipped_local.parent.mkdir(parents=True, exist_ok=True)
-    skipped_local.write_text("fresh zip", encoding="utf-8")
+    skipped_local.write_bytes(b"x" * remote_skipped.size)
     os.utime(skipped_local, (remote_skipped.last_modified.timestamp() + 100,) * 2)
 
     workflow = ArchiveDownloadWorkflow(
@@ -289,6 +289,97 @@ async def test_archive_download_workflow_builds_new_updated_and_skipped_diff(tmp
         (remote_new.key, "new"),
         (remote_updated.key, "updated"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_archive_download_workflow_redownloads_size_mismatch(tmp_path: Path) -> None:
+    """A fresh local file with a different size should be downloaded again."""
+    remote = ArchiveFile(
+        key="data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-01.zip",
+        size=12,
+        last_modified=datetime(2026, 4, 1, 8, 6, 34, tzinfo=UTC),
+    )
+    local_file = tmp_path / Path(remote.key)
+    local_file.parent.mkdir(parents=True, exist_ok=True)
+    local_file.write_bytes(b"truncated")
+    os.utime(local_file, (remote.last_modified.timestamp() + 100,) * 2)
+    verified_marker = local_file.parent / f"{local_file.name}.verified"
+    verified_marker.write_text("", encoding="utf-8")
+
+    captured_requests: list = []
+
+    def fake_download(requests, **kwargs):  # noqa: ANN001
+        del kwargs
+        captured_requests.extend(requests)
+        for request in requests:
+            request.local_path.write_bytes(b"complete zip")
+        return Aria2DownloadResult(requested=len(requests), failed_requests=[])
+
+    workflow = ArchiveDownloadWorkflow(
+        trade_type=TradeType.um,
+        data_freq=DataFrequency.monthly,
+        data_type=DataType.funding_rate,
+        symbols=["BTCUSDT"],
+        archive_home=tmp_path,
+        client=FakeArchiveClient(files_by_symbol={"BTCUSDT": [remote]}),
+        download_func=fake_download,
+    )
+
+    result = await workflow.run()
+
+    assert result.downloaded == 1
+    assert result.skipped == 0
+    assert [request.local_path for request in captured_requests] == [local_file]
+    assert local_file.read_bytes() == b"complete zip"
+    assert not verified_marker.exists()
+
+
+@pytest.mark.asyncio
+async def test_archive_download_workflow_redownloads_file_with_aria2_control(
+    tmp_path: Path,
+) -> None:
+    """A complete-sized local file with an aria2 control file should be downloaded again."""
+    remote = ArchiveFile(
+        key="data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-01.zip",
+        size=12,
+        last_modified=datetime(2026, 4, 1, 8, 6, 34, tzinfo=UTC),
+    )
+    local_file = tmp_path / Path(remote.key)
+    local_file.parent.mkdir(parents=True, exist_ok=True)
+    local_file.write_bytes(b"complete zip")
+    os.utime(local_file, (remote.last_modified.timestamp() + 100,) * 2)
+    control_file = local_file.with_name(f"{local_file.name}.aria2")
+    control_file.write_bytes(b"incomplete")
+    verified_marker = local_file.parent / f"{local_file.name}.verified"
+    verified_marker.write_text("", encoding="utf-8")
+
+    captured_requests: list = []
+
+    def fake_download(requests, **kwargs):  # noqa: ANN001
+        del kwargs
+        captured_requests.extend(requests)
+        for request in requests:
+            request.local_path.write_bytes(b"complete zip")
+            request.local_path.with_name(f"{request.local_path.name}.aria2").unlink()
+        return Aria2DownloadResult(requested=len(requests), failed_requests=[])
+
+    workflow = ArchiveDownloadWorkflow(
+        trade_type=TradeType.um,
+        data_freq=DataFrequency.monthly,
+        data_type=DataType.funding_rate,
+        symbols=["BTCUSDT"],
+        archive_home=tmp_path,
+        client=FakeArchiveClient(files_by_symbol={"BTCUSDT": [remote]}),
+        download_func=fake_download,
+    )
+
+    result = await workflow.run()
+
+    assert result.downloaded == 1
+    assert result.skipped == 0
+    assert [request.local_path for request in captured_requests] == [local_file]
+    assert not control_file.exists()
+    assert not verified_marker.exists()
 
 
 @pytest.mark.asyncio
