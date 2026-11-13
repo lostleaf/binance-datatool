@@ -23,7 +23,12 @@ def test_download_archive_files_raises_when_aria2_is_missing(monkeypatch, tmp_pa
     """A dedicated error should be raised when aria2c is unavailable."""
     monkeypatch.setattr("shutil.which", lambda name: None)
 
-    with pytest.raises(Aria2NotFoundError, match="aria2c executable not found"):
+    def unexpected_run(*args, **kwargs):
+        pytest.fail("Missing aria2c must be reported before starting a download process.")
+
+    monkeypatch.setattr("subprocess.run", unexpected_run)
+
+    with pytest.raises(Aria2NotFoundError):
         download_archive_files(
             [
                 DownloadRequest(

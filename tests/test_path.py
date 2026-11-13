@@ -31,7 +31,5 @@ def test_resolve_archive_home_raises_when_unconfigured(monkeypatch) -> None:
     """A descriptive error should be raised when the archive home is missing."""
     monkeypatch.delenv("BINANCE_DATATOOL_ARCHIVE_HOME", raising=False)
 
-    with pytest.raises(
-        ArchiveHomeNotConfiguredError, match="BINANCE_DATATOOL_ARCHIVE_HOME not configured"
-    ):
+    with pytest.raises(ArchiveHomeNotConfiguredError):
         resolve_archive_home()

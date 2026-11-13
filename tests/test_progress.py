@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from binance_datatool.common.progress import (
     LogReporter,
     TqdmReporter,
@@ -20,9 +22,8 @@ def test_tqdm_reporter_rejects_nested_instances() -> None:
     outer = TqdmReporter(total=1, description="outer")
     inner = TqdmReporter(total=1, description="inner")
 
-    with outer:
-        try:
-            with inner:
-                raise AssertionError("unreachable")
-        except RuntimeError as exc:
-            assert "does not support nested" in str(exc)
+    with outer, pytest.raises(RuntimeError), inner:
+        pytest.fail("Nested reporters must be rejected before entering the body.")
+
+    with inner:
+        pass

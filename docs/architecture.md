@@ -1,83 +1,37 @@
 # Architecture
 
-This document describes the internal architecture of `binance-datatool`. It is intended for
-contributors, maintainers, and AI agents working on the codebase.
+`binance-datatool` discovers historical archives on `data.binance.vision`, downloads archive
+objects into local storage, and verifies ZIP files against SHA256 checksums. Domain meanings
+are defined in the root [glossary](../GLOSSARY.md).
 
-## Package Tree
+## Package boundaries
 
-```
-src/binance_datatool/
-├── __init__.py              # Package root — exports __version__
-├── py.typed                 # PEP 561 type stub marker
-│
-├── common/                  # Shared types, filters, and constants
-│   ├── __init__.py          # Re-exports public symbols
-│   ├── constants.py         # S3 settings, quote assets, stablecoins, leverage rules
-│   ├── enums.py             # TradeType, DataFrequency, DataType, ContractType
-│   ├── filter.py            # Spot/Um/Cm symbol filters and build_symbol_filter()
-│   ├── logging.py           # configure_cli_logging for CLI entry points
-│   ├── path.py              # Archive-home resolution and ArchiveHomeNotConfiguredError
-│   ├── progress.py          # ProgressEvent, ProgressReporter protocol, make_reporter()
-│   ├── types.py             # SymbolInfoBase, SpotSymbolInfo, UmSymbolInfo, CmSymbolInfo
-│   └── symbols.py           # infer_spot_info, infer_um_info, infer_cm_info
-│
-├── archive/                 # S3 data access, checksum, and download helpers
-│   ├── __init__.py          # Re-exports client, checksum, downloader, and symbol_dir symbols
-│   ├── checksum.py          # SHA256 verification helpers (calc, read, verify_single_file)
-│   ├── client.py            # HTTP client, XML parsing, ArchiveFile metadata
-│   ├── downloader.py        # aria2c batch downloader with per-file retry and proxy control
-│   └── symbol_dir.py        # SymbolArchiveDir, local marker management, directory scanning
-│
-├── workflow/                # Business logic orchestration
-│   ├── __init__.py          # Re-exports all workflow classes and result types
-│   ├── _shared.py           # Shared helpers (infer_symbol_info, validate_interval)
-│   ├── download.py          # ArchiveDownloadWorkflow
-│   ├── list_files.py        # ArchiveListFilesWorkflow
-│   ├── list_symbols.py      # ArchiveListSymbolsWorkflow
-│   ├── results.py           # Result dataclasses (ListSymbolsResult, DiffResult, VerifyResult, etc.)
-│   └── verify.py            # ArchiveVerifyWorkflow
-│
-└── cli/                     # Typer CLI layer
-    ├── __init__.py          # Root callback with -v/-vv verbosity and --archive-home
-    └── archive.py           # Root list-symbols, list-files, download, and verify commands
-```
-
-## Layered Design
-
-The package follows a strict four-layer architecture. Each layer depends only on the layers
-below it — outer layers import inner layers, never the reverse.
-
-```
-CLI  (cli/)
- └─▶ Workflow  (workflow/)
-       └─▶ Archive Client  (archive/)
-             └─▶ Common  (common/)
-```
+Dependencies point inward: CLI → Workflow → Archive → Common. A layer can also use shared
+facilities from lower layers directly; lower layers do not import higher ones.
 
 | Layer | Package | Responsibility |
 |-------|---------|----------------|
-| **Common** | `binance_datatool.common` | Shared enums, constants, types, and symbol filters used across the project. |
-| **Archive Client** | `binance_datatool.archive` | S3 HTTP communication with data.binance.vision. |
-| **Workflow** | `binance_datatool.workflow` | Business logic orchestration; decouples CLI from the client. |
-| **CLI** | `binance_datatool.cli` | Typer command definitions, argument parsing, output formatting. |
+| Common | `binance_datatool.common` | Shared enums, symbol inference and filters, archive-home resolution, logging, and progress reporting. |
+| Archive | `binance_datatool.archive` | S3 listings, archive-object metadata, aria2 transfers, SHA256 helpers, local symbol directories, and verification markers. |
+| Workflow | `binance_datatool.workflow` | Symbol classification, file listing and failure isolation, remote/local download comparison, local scanning, verification, and cleanup. |
+| CLI | `binance_datatool.cli` | Argument validation, workflow construction, output formatting, and exit status. |
 
-For detailed API docs see the [module reference](reference/).
+The root package exports only version metadata. Workflows are importable independently of
+Typer. The [module reference](reference/README.md) documents public interfaces and re-exports;
+[coding standards](agents/coding-standards.md) owns Python and testing conventions.
 
-### Why Four Layers?
+## Operations and data flow
 
-- **Testability.** Workflows and clients can be tested independently of CLI parsing.
-- **Composability.** Workflows can be reused from scripts or notebooks without importing Typer.
-- **Extensibility.** Adding a new command means adding a thin CLI function that delegates to a
-  workflow, without touching the archive client.
+| Commands | Workflow operations | External boundary |
+|----------|---------------------|-------------------|
+| `list-symbols`, `list-files` | Discover symbols or objects, classify/filter results, isolate listing failures. | Remote S3 XML listings through `ArchiveClient`. |
+| `download` | List remote objects, compare local files, transfer selected objects, invalidate affected verification markers. | Remote listings, aria2 subprocess, local filesystem. |
+| `verify` | Scan local symbol directories, reuse fresh verification markers, compare SHA256, clean orphan or failed artifacts. | Local filesystem and verification worker processes; no remote listing or download. |
 
-## Data Flow
+Download dry-runs still list remote objects but do not write local files. Verification dry-runs
+scan local files without hashing or cleanup. Download completion and eligibility to skip a
+transfer do not establish checksum verification.
 
-All CLI logging flows through `stderr`; stdout is reserved exclusively for command
-results so that sub-commands remain safe to pipe. See the
-[CLI overview](reference/cli/) for verbosity flag details.
-
-Every CLI command follows the same four-layer call path: the CLI function parses
-arguments, constructs a workflow, and presents the result. The workflow orchestrates
-business logic and delegates S3 communication to the archive client. Per-command data
-flow diagrams are documented alongside each command in the
-[CLI reference](reference/cli/archive.md).
+The [workflow reference](reference/workflow/README.md) owns download comparison and verification
+cache rules. The [CLI reference](reference/cli/archive.md) describes output units and outcomes.
+Stdout carries machine-consumable results; summaries, diagnostics, and progress go to stderr.

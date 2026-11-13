@@ -17,13 +17,19 @@ tests/
 └── test_symbols.py             # Symbol inference unit and integration tests
 ```
 
+For behavior assertions, human diagnostics, and machine-output contracts, follow the
+[coding standards](../agents/coding-standards.md#test-contracts). This page owns test placement
+and shared support.
+
 ## Conventions
 
 - **Unit tests** use `monkeypatch` to replace HTTP methods with fake responses.
 - **Integration tests** are marked with `@pytest.mark.integration` and skipped by default.
   Run them explicitly with `pytest --run-integration`.
 - **CLI tests** use `typer.testing.CliRunner` and monkeypatch the workflow's `run()` method so
-  they run without network access.
+  they run without network access. Assert emission and stream routing through the runner;
+  the CLI diagnostic fixture can observe `typer.echo` emissions without freezing their wording.
+  Keep counts and file effects covered in workflow and component results.
 
 ## Shared Test Support in `conftest.py`
 

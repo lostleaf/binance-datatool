@@ -1,6 +1,7 @@
 # binance_datatool.workflow
 
-Business logic orchestration layer between the CLI and the archive client.
+Business logic orchestration between the CLI and remote/local archive helpers.
+Verification is local-only. Domain meanings live in the [glossary](../../../GLOSSARY.md).
 
 ## `ArchiveListSymbolsWorkflow`
 
@@ -142,6 +143,8 @@ Diffs remote archive listings against local files and optionally downloads new o
 updated files via aria2c.
 
 ```python
+from pathlib import Path
+
 from binance_datatool.workflow import (
     ArchiveDownloadWorkflow,
     DiffResult,
@@ -173,7 +176,7 @@ result = await workflow.run()
 | `client` | `None` | Optional pre-configured `ArchiveClient`. |
 | `download_func` | `None` | Optional download callable for dependency injection. Defaults to `download_archive_files`. |
 
-### `run()`
+### Download comparison
 
 ```python
 async def run(self) -> DiffResult | DownloadResult
@@ -191,7 +194,9 @@ async def run(self) -> DiffResult | DownloadResult
    deletes stale local copies of updated files, then downloads via
    `download_archive_files` with per-file retry and optional progress reporting.
 
-Returns `DiffResult` when `dry_run=True`, otherwise `DownloadResult`.
+Returns `DiffResult` when `dry_run=True`, otherwise `DownloadResult`. All file counts
+refer to individual archive objects, including ZIP and checksum files. Successful transfer
+and download skips do not establish SHA256 verification.
 
 ## `DiffEntry`
 
@@ -244,6 +249,8 @@ Scans local archive directories, classifies zip files into verify / skip / orpha
 buckets, and optionally verifies SHA256 checksums in parallel using a process pool.
 
 ```python
+from pathlib import Path
+
 from binance_datatool.workflow import (
     ArchiveVerifyWorkflow,
     VerifyDiffResult,
@@ -294,8 +301,7 @@ local I/O and CPU work — no network access is needed.
 3. **Orphan cleanup** — orphan zips have their markers cleared (zip file is kept);
    orphan checksums and their markers are deleted.
 4. **Parallel verification** — submits `verify_single_file` tasks to a
-   `ProcessPoolExecutor` with `spawn` context. SHA256 is CPU-intensive, so process
-   isolation avoids GIL contention. Reports progress via the shared
+   `ProcessPoolExecutor` with `spawn` context. Reports progress via the shared
    progress-reporting framework.
 5. **Post-verify** — pre-collects existing markers per directory (via
    `collect_markers_by_zip`) to avoid per-file glob calls, then for each result:
@@ -310,6 +316,11 @@ Verified files are tracked by marker files named `{zip_name}.{ts}.verified`, whe
 `ts = max(now, ceil(max(zip_mtime, checksum_mtime)))`. A marker is valid when
 `max(ts_markers) >= ceil(max(zip_mtime, checksum_mtime))`. Legacy markers without a
 timestamp (`file.zip.verified`) are treated as invalid and force re-verification.
+
+A cached skip performs no new SHA256 comparison. This relies on local ZIP and checksum
+modification times: a content change that preserves them is not detected by the cache.
+Download updates invalidate the affected ZIP markers before transfer; a failed verification
+clears markers even when `keep_failed=True`.
 
 ## `VerifyDiffResult`
 
@@ -329,8 +340,8 @@ Returned by `ArchiveVerifyWorkflow.run()` after a real verify run.
 
 | Field / Property | Type | Description |
 |------------------|------|-------------|
-| `skipped` | `int` | Zip files with a valid marker (not re-verified). |
-| `verified` | `int` | Zip files that passed verification. |
+| `skipped` | `int` | Zip files accepted through cached verification (not hashed in this run). |
+| `verified` | `int` | Zip files that passed SHA256 comparison in this run. |
 | `orphan_zips` | `int` | Orphan zips whose markers were cleared. |
 | `orphan_checksums` | `int` | Orphan checksums that were deleted. |
 | `failed_details` | `dict[Path, str]` | Failed zip paths mapped to failure descriptions. |

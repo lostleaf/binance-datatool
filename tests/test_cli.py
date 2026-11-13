@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from binance_datatool.archive import ArchiveFile
@@ -34,19 +35,46 @@ from binance_datatool.workflow import (
 runner = CliRunner(env={"TERM": "dumb"})
 
 
-def test_cli_root_help_uses_new_app_name() -> None:
-    """Root help should expose root commands without an archive namespace."""
-    result = runner.invoke(app, ["--help"])
+@pytest.mark.parametrize(
+    "command", [[], ["list-symbols"], ["list-files"], ["download"], ["verify"]]
+)
+def test_cli_help_is_available(command: list[str]) -> None:
+    """Root and command help should be available without running workflows."""
+    result = runner.invoke(app, [*command, "--help"])
 
     assert result.exit_code == 0
-    assert "binance-datatool" in result.stdout
-    assert "Binance DataTool CLI." in result.stdout
-    assert "--archive-home" in result.stdout
-    assert "list-symbols" in result.stdout
-    assert "list-files" in result.stdout
-    assert "download" in result.stdout
-    assert "verify" in result.stdout
-    assert "\n  archive" not in result.stdout
+    assert result.stdout.strip()
+    assert result.stderr == ""
+
+
+@pytest.fixture
+def no_workflow_execution(monkeypatch):
+    """Reject workflow execution when testing invalid command inputs."""
+    executed = []
+
+    def unexpected_run(self):
+        executed.append(self)
+        pytest.fail("Invalid input must be rejected before workflow execution.")
+
+    for name in ("ArchiveListFilesWorkflow", "ArchiveDownloadWorkflow", "ArchiveVerifyWorkflow"):
+        monkeypatch.setattr(f"binance_datatool.workflow.{name}.run", unexpected_run)
+    yield
+    assert executed == []
+
+
+@pytest.fixture
+def stderr_messages(monkeypatch) -> list[str]:
+    """Observe CLI diagnostic emissions while preserving actual stream output."""
+    messages: list[str] = []
+    original_echo = typer.echo
+
+    def capture_echo(message=None, *args, **kwargs):
+        if kwargs.get("err"):
+            messages.append(str(message))
+        return original_echo(message, *args, **kwargs)
+
+    monkeypatch.setattr(typer, "echo", capture_echo)
+    return messages
 
 
 def test_cli_list_symbols_outputs_only_matched_symbols(monkeypatch) -> None:
@@ -242,7 +270,7 @@ def test_cli_list_symbols_builds_cm_filter(monkeypatch) -> None:
     assert result.stdout == ""
 
 
-def test_cli_list_files_rejects_mutually_exclusive_flags() -> None:
+def test_cli_list_files_rejects_mutually_exclusive_flags(no_workflow_execution) -> None:
     """The CLI should reject incompatible output filters."""
     result = runner.invoke(
         app,
@@ -258,18 +286,20 @@ def test_cli_list_files_rejects_mutually_exclusive_flags() -> None:
     )
 
     assert result.exit_code == 2
-    assert "mutually exclusive" in result.stderr
+    assert result.stdout == ""
+    assert result.stderr.strip()
 
 
-def test_cli_list_files_requires_interval_for_kline_types() -> None:
+def test_cli_list_files_requires_interval_for_kline_types(no_workflow_execution) -> None:
     """Kline-class data types should require an interval."""
     result = runner.invoke(app, ["list-files", "um", "BTCUSDT"])
 
     assert result.exit_code == 2
-    assert "--interval" in result.stderr
+    assert result.stdout == ""
+    assert result.stderr.strip()
 
 
-def test_cli_list_files_rejects_interval_for_non_kline_types() -> None:
+def test_cli_list_files_rejects_interval_for_non_kline_types(no_workflow_execution) -> None:
     """Non-kline data types should reject interval arguments."""
     result = runner.invoke(
         app,
@@ -285,15 +315,17 @@ def test_cli_list_files_rejects_interval_for_non_kline_types() -> None:
     )
 
     assert result.exit_code == 2
-    assert "--interval" in result.stderr
+    assert result.stdout == ""
+    assert result.stderr.strip()
 
 
-def test_cli_list_files_requires_symbols() -> None:
+def test_cli_list_files_requires_symbols(no_workflow_execution) -> None:
     """The CLI should reject calls without symbols from args or stdin."""
     result = runner.invoke(app, ["list-files", "um", "--type", "fundingRate"])
 
     assert result.exit_code == 2
-    assert "No symbols given" in result.stderr
+    assert result.stdout == ""
+    assert result.stderr.strip()
 
 
 def test_cli_list_files_argument_symbols_override_stdin(monkeypatch) -> None:
@@ -450,7 +482,7 @@ def test_cli_list_files_logs_errors_and_exits_2(monkeypatch) -> None:
                 SymbolListFilesResult(
                     symbol="BTCUSDT",
                     files=[],
-                    error="Connection reset by peer",
+                    error="remote-listing-sentinel-37",
                 )
             ]
         )
@@ -466,7 +498,9 @@ def test_cli_list_files_logs_errors_and_exits_2(monkeypatch) -> None:
     )
 
     assert result.exit_code == 2
-    assert "BTCUSDT: Connection reset by peer" in result.stderr
+    assert result.stdout == ""
+    assert "BTCUSDT" in result.stderr
+    assert "remote-listing-sentinel-37" in result.stderr
 
 
 def test_cli_list_files_kline_relative_path_contains_interval(monkeypatch) -> None:
@@ -555,11 +589,22 @@ def test_cli_list_files_only_checksum(monkeypatch) -> None:
     assert result.stdout == "BTCUSDT/BTCUSDT-fundingRate-2026-03.zip.CHECKSUM\n"
 
 
-def test_cli_list_files_warns_on_empty_remote_without_failures(monkeypatch) -> None:
+@pytest.mark.parametrize("outcome", ["empty", "nonempty", "failed"])
+def test_cli_list_files_warns_only_on_empty_success(
+    monkeypatch, sample_archive_files, stderr_messages, outcome: str
+) -> None:
     """An empty successful listing should emit a warning hint."""
 
     async def fake_run(self) -> ListFilesResult:
-        return ListFilesResult(per_symbol=[SymbolListFilesResult(symbol="BTCUSDT", files=[])])
+        return ListFilesResult(
+            per_symbol=[
+                SymbolListFilesResult(
+                    symbol="BTCUSDT",
+                    files=sample_archive_files if outcome == "nonempty" else [],
+                    error="empty-listing-sentinel-37" if outcome == "failed" else None,
+                )
+            ]
+        )
 
     monkeypatch.setattr(
         "binance_datatool.workflow.ArchiveListFilesWorkflow.run",
@@ -571,8 +616,17 @@ def test_cli_list_files_warns_on_empty_remote_without_failures(monkeypatch) -> N
         ["list-files", "um", "--type", "fundingRate", "BTCUSDT"],
     )
 
-    assert result.exit_code == 0
-    assert "Warning: no archive files found" in result.stderr
+    assert result.exit_code == (2 if outcome == "failed" else 0)
+    assert len(stderr_messages) == (1 if outcome == "empty" else 0)
+    if outcome == "nonempty":
+        assert result.stdout
+        assert result.stderr == ""
+    else:
+        assert result.stdout == ""
+        assert result.stderr.strip()
+    if outcome == "failed":
+        assert "BTCUSDT" in result.stderr
+        assert "empty-listing-sentinel-37" in result.stderr
 
 
 def test_cli_list_files_passes_progress_bar_flag(monkeypatch) -> None:
@@ -602,12 +656,15 @@ def test_cli_list_files_passes_progress_bar_flag(monkeypatch) -> None:
     assert result.exit_code == 0
 
 
-def test_cli_download_requires_symbols() -> None:
+def test_cli_download_requires_symbols(no_workflow_execution) -> None:
     """Download should reject calls without symbols from args or stdin."""
-    result = runner.invoke(app, ["download", "um", "--type", "fundingRate"])
+    result = runner.invoke(
+        app, ["--archive-home", "/tmp/archive-home", "download", "um", "--type", "fundingRate"]
+    )
 
     assert result.exit_code == 2
-    assert "No symbols given" in result.stderr
+    assert result.stdout == ""
+    assert result.stderr.strip()
 
 
 def test_cli_download_dry_run_outputs_tsv(monkeypatch) -> None:
@@ -661,7 +718,7 @@ def test_cli_download_dry_run_outputs_tsv(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert result.stdout == "new\t1048\tBTCUSDT/BTCUSDT-fundingRate-2026-03.zip\n"
-    assert result.stderr == "1 files to download, 12 up to date\n"
+    assert result.stderr.strip()
 
 
 @pytest.mark.parametrize(
@@ -711,7 +768,7 @@ def test_cli_download_prints_summary(
 
     assert result.exit_code == expected_exit_code
     assert result.stdout == ""
-    assert result.stderr == (f"Done: {downloaded} downloaded, {failed} failed, {skipped} skipped\n")
+    assert result.stderr.strip()
 
 
 def test_cli_download_passes_archive_home_and_proxy_flag(monkeypatch) -> None:
@@ -793,7 +850,9 @@ def test_cli_download_logs_listing_errors_and_exits_2(monkeypatch) -> None:
             to_download=[],
             skipped=0,
             total_remote=0,
-            listing_errors=[SymbolListingError(symbol="ETHUSDT", error="boom")],
+            listing_errors=[
+                SymbolListingError(symbol="ETHUSDT", error="download-listing-sentinel-37")
+            ],
         )
 
     monkeypatch.setattr(
@@ -816,29 +875,48 @@ def test_cli_download_logs_listing_errors_and_exits_2(monkeypatch) -> None:
     )
 
     assert result.exit_code == 2
-    assert "ETHUSDT: boom" in result.stderr
+    assert result.stdout == ""
+    assert "ETHUSDT" in result.stderr
+    assert "download-listing-sentinel-37" in result.stderr
 
 
-def test_cli_verify_requires_symbols() -> None:
+def test_cli_verify_requires_symbols(no_workflow_execution) -> None:
     """Verify should reject calls without symbols from args or stdin."""
-    result = runner.invoke(app, ["verify", "um", "--type", "fundingRate"])
+    result = runner.invoke(
+        app, ["--archive-home", "/tmp/archive-home", "verify", "um", "--type", "fundingRate"]
+    )
 
     assert result.exit_code == 2
-    assert "No symbols given" in result.stderr
+    assert result.stdout == ""
+    assert result.stderr.strip()
 
 
-def test_cli_verify_validates_interval() -> None:
+def test_cli_verify_validates_interval(no_workflow_execution) -> None:
     """Verify should enforce the same interval validation as list-files/download."""
-    missing_interval = runner.invoke(app, ["verify", "um", "BTCUSDT"])
+    missing_interval = runner.invoke(
+        app, ["--archive-home", "/tmp/archive-home", "verify", "um", "BTCUSDT"]
+    )
     extra_interval = runner.invoke(
         app,
-        ["verify", "um", "--type", "fundingRate", "--interval", "1m", "BTCUSDT"],
+        [
+            "--archive-home",
+            "/tmp/archive-home",
+            "verify",
+            "um",
+            "--type",
+            "fundingRate",
+            "--interval",
+            "1m",
+            "BTCUSDT",
+        ],
     )
 
     assert missing_interval.exit_code == 2
-    assert "--interval" in missing_interval.stderr
+    assert missing_interval.stdout == ""
+    assert missing_interval.stderr.strip()
     assert extra_interval.exit_code == 2
-    assert "--interval" in extra_interval.stderr
+    assert extra_interval.stdout == ""
+    assert extra_interval.stderr.strip()
 
 
 def test_cli_verify_passes_archive_home_and_keep_failed(monkeypatch) -> None:
@@ -876,7 +954,8 @@ def test_cli_verify_passes_archive_home_and_keep_failed(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
-    assert "Done: 1 verified, 0 failed, 0 skipped" in result.stderr
+    assert result.stdout == ""
+    assert result.stderr.strip()
 
 
 def test_cli_verify_passes_progress_bar_flag(monkeypatch) -> None:
@@ -957,10 +1036,10 @@ def test_cli_verify_dry_run_outputs_paths_and_summary(monkeypatch) -> None:
     assert result.stdout == (
         "BTCUSDT/1m/BTCUSDT-1m-2020-01-01.zip\nBTCUSDT/1m/BTCUSDT-1m-2020-01-02.zip\n"
     )
-    assert "2 to verify, 120 up to date, 0 orphan zip, 1 orphan checksum" in result.stderr
+    assert result.stderr.strip()
 
 
-def test_cli_verify_returns_zero_with_failures_or_orphans(monkeypatch) -> None:
+def test_cli_verify_returns_zero_with_failures_or_orphans(monkeypatch, stderr_messages) -> None:
     """Verify failures and orphan cleanup should still exit successfully."""
 
     def fake_run(self) -> VerifyResult:
@@ -969,7 +1048,7 @@ def test_cli_verify_returns_zero_with_failures_or_orphans(monkeypatch) -> None:
             verified=120,
             orphan_zips=1,
             orphan_checksums=2,
-            failed_details={Path("/tmp/archive-home/file.zip"): "checksum mismatch"},
+            failed_details={Path("/tmp/archive-home/file.zip"): "verify-failure-sentinel-37"},
         )
 
     monkeypatch.setattr(
@@ -991,18 +1070,21 @@ def test_cli_verify_returns_zero_with_failures_or_orphans(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
-    assert "Done: 120 verified, 1 failed, 50 skipped" in result.stderr
-    assert "Cleaned 1 orphan zip markers, deleted 2 orphan checksums" in result.stderr
-    assert "file.zip: checksum mismatch" in result.stderr
+    assert result.stdout == ""
+    assert "file.zip" in result.stderr
+    assert "verify-failure-sentinel-37" in result.stderr
+    assert len(stderr_messages) == 2
+    assert all(message.strip() for message in stderr_messages)
 
 
-def test_cli_verify_warns_on_empty_local_scan(monkeypatch) -> None:
+@pytest.mark.parametrize("skipped", [0, 1])
+def test_cli_verify_warns_only_on_empty_local_scan(monkeypatch, stderr_messages, skipped) -> None:
     """Empty verify scans should warn instead of pretending everything is current."""
 
     def fake_run(self) -> VerifyDiffResult:
         return VerifyDiffResult(
             to_verify=[],
-            skipped=0,
+            skipped=skipped,
             orphan_zips=[],
             orphan_checksums=[],
         )
@@ -1027,7 +1109,78 @@ def test_cli_verify_warns_on_empty_local_scan(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
-    assert "Warning: no local zip files found" in result.stderr
+    assert result.stdout == ""
+    assert result.stderr.strip()
+    assert len(stderr_messages) == (2 if skipped == 0 else 1)
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+@pytest.mark.parametrize("outcome", ["empty", "nonempty", "failed"])
+def test_cli_download_warns_only_on_empty_success(
+    monkeypatch, stderr_messages, dry_run: bool, outcome: str
+) -> None:
+    """Empty listings warn; nonempty listings and listing failures suppress the warning."""
+
+    async def fake_run(self) -> DiffResult | DownloadResult:
+        errors = (
+            [SymbolListingError(symbol="BTCUSDT", error="download-warning-sentinel-37")]
+            if outcome == "failed"
+            else []
+        )
+        total = 1 if outcome == "nonempty" else 0
+        if dry_run:
+            return DiffResult(
+                to_download=[], skipped=total, total_remote=total, listing_errors=errors
+            )
+        return DownloadResult(
+            total_remote=total, skipped=total, downloaded=0, failed=0, listing_errors=errors
+        )
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveDownloadWorkflow.run", fake_run)
+    args = ["--archive-home", "/tmp/archive-home", "download", "um", "--type", "fundingRate"]
+    if dry_run:
+        args.append("--dry-run")
+    result = runner.invoke(app, [*args, "BTCUSDT"])
+
+    assert result.exit_code == (2 if outcome == "failed" else 0)
+    assert result.stdout == ""
+    assert result.stderr.strip()
+    assert len(stderr_messages) == (2 if outcome == "empty" else 1)
+    if outcome == "failed":
+        assert "BTCUSDT" in result.stderr
+        assert "download-warning-sentinel-37" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--archive-home", "/tmp/archive-home", "download", "um", "BTCUSDT"],
+        [
+            "--archive-home",
+            "/tmp/archive-home",
+            "download",
+            "um",
+            "--type",
+            "fundingRate",
+            "--interval",
+            "1m",
+            "BTCUSDT",
+        ],
+        ["download", "um", "--type", "fundingRate", "BTCUSDT"],
+        ["verify", "um", "--type", "fundingRate", "BTCUSDT"],
+    ],
+)
+def test_cli_rejects_invalid_local_command_input(
+    monkeypatch, no_workflow_execution, arguments: list[str]
+) -> None:
+    """Invalid intervals and missing archive home fail before any workflow work."""
+    monkeypatch.delenv("BINANCE_DATATOOL_ARCHIVE_HOME", raising=False)
+
+    result = runner.invoke(app, arguments)
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert result.stderr.strip()
 
 
 @pytest.mark.integration

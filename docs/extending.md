@@ -15,8 +15,9 @@ To support a new dataset type (for example, `"premiumIndex"`):
        premium_index = "premiumIndex"
    ```
 
-2. Review whether the new member needs additional enum-property updates. The new member
-   automatically becomes available in:
+2. Confirm the archive actually publishes the dataset for the intended market and frequency.
+   Review whether the new member needs additional enum-property updates. The new member
+   is exposed through the enum in:
    - CLI arguments (Typer picks up `StrEnum` members).
    - S3 path construction (the value is used directly).
 
@@ -29,13 +30,15 @@ method to the enum class.
 
 ## Adding a New CLI Command
 
-Follow the three-layer pattern: **CLI → Workflow → Client**.
+Keep the CLI thin and delegate business logic to a workflow. Use archive helpers when
+the operation needs remote or local archive access; local-only operations do not need
+an `ArchiveClient`. See [package boundaries](architecture.md#package-boundaries).
 
-### Step 1: Add a Client Method
+### Step 1: Add Archive Access
 
-If the command needs new data access, add an `async` method to `ArchiveClient` in
-`archive/client.py`. Keep the method focused on S3 communication and return plain data
-structures.
+If the command needs new remote listings, add an `async` method to `ArchiveClient` in
+`archive/client.py`. Keep it focused on S3 communication and return plain data structures.
+For local archive operations, use or extend the directory and checksum helpers in `archive/`.
 
 ```python
 async def list_dates(self, trade_type: TradeType, ...) -> list[str]:
@@ -49,7 +52,8 @@ See `list_symbols` and `list_symbol_files` in `archive/client.py` for real examp
 ### Step 2: Create a Workflow Class
 
 Create a workflow in `workflow/` (or a new module if the scope warrants it).
-Accept an optional `client` parameter for testability and return a typed result dataclass.
+For remote workflows, follow the existing optional `client` injection pattern. Return
+typed result data. Local-only workflows can be synchronous, as `ArchiveVerifyWorkflow` is.
 
 ```python
 class ArchiveListDatesWorkflow:
@@ -85,31 +89,16 @@ See `list_symbols_command`, `list_files_command`, `download_command`, and
 
 ### Step 4: Add Tests
 
-Add tests at each layer. See [Test Organization](reference/testing.md) for directory layout,
+Choose the smallest existing public seam that proves the new behavior. Follow the
+[test contracts](agents/coding-standards.md#test-contracts). See [Test Organization](reference/testing.md) for directory layout,
 conventions, and shared fixtures.
 
 ## Adding a New Sub-command Group
 
-To add a command group alongside the current root data commands
-(for example, `binance-datatool holo ...`):
-
-1. Define a new Typer app in `cli/__init__.py`:
-
-   ```python
-   holo_app = typer.Typer(name="holo", help="Holographic kline generation.")
-   app.add_typer(holo_app)
-   ```
-
-2. Create the command module `cli/holo.py` and register it with a side-effect import in
-   `cli/__init__.py`:
-
-   ```python
-   # Register command modules (side-effect import).
-   from binance_datatool.cli import archive as _archive  # noqa: F401,E402
-   from binance_datatool.cli import holo as _holo  # noqa: F401,E402
-   ```
-
-3. Follow the same CLI → Workflow → Client layering for the new commands.
+When a feature needs a group, define a Typer app in `cli/__init__.py` and attach it
+with `app.add_typer(...)`. Register its command module through the existing side-effect
+import pattern. Keep workflow logic in `workflow/` and archive access in `archive/`.
+The current data commands are registered directly on the root app.
 
 ## Test Organization
 

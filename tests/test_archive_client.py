@@ -197,11 +197,16 @@ async def test_archive_client_list_files_in_dir_handles_pagination(
 
 
 @pytest.mark.asyncio
-async def test_archive_client_list_symbol_files_validates_interval() -> None:
+async def test_archive_client_list_symbol_files_validates_interval(monkeypatch) -> None:
     """High-level symbol file listing should enforce interval compatibility."""
     client = ArchiveClient()
 
-    with pytest.raises(ValueError, match="interval is required"):
+    def unexpected_session(*args, **kwargs):
+        pytest.fail("Invalid intervals must be rejected before opening an HTTP session.")
+
+    monkeypatch.setattr("aiohttp.ClientSession", unexpected_session)
+
+    with pytest.raises(ValueError):
         await client.list_symbol_files(
             TradeType.um,
             DataFrequency.daily,
@@ -209,7 +214,7 @@ async def test_archive_client_list_symbol_files_validates_interval() -> None:
             "BTCUSDT",
         )
 
-    with pytest.raises(ValueError, match="interval is not applicable"):
+    with pytest.raises(ValueError):
         await client.list_symbol_files(
             TradeType.um,
             DataFrequency.monthly,

@@ -51,4 +51,6 @@ def test_verify_single_file_fails(tmp_path) -> None:
 
     assert result.zip_path == zip_path
     assert result.passed is False
-    assert result.detail == "checksum mismatch"
+    assert result.detail
+    assert zip_path.exists()
+    assert zip_path.with_suffix(".zip.CHECKSUM").exists()

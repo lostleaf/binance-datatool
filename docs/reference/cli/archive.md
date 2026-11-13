@@ -1,6 +1,7 @@
 # binance-datatool commands
 
-Root CLI commands for querying and downloading data from data.binance.vision.
+Root CLI commands for remote archive discovery and download, plus local-only SHA256 verification.
+Domain terms are defined in the [glossary](../../../GLOSSARY.md).
 
 ## `list-symbols`
 
@@ -117,7 +118,7 @@ BTCUSDT/1m/BTCUSDT-1m-2024-01-01.zip
 ```
 
 **Long (`-l` / `--long`):** three-column TSV, **no header row**, suitable for
-piping into `awk` / `cut` / Polars:
+piping into `awk` / `cut`:
 
 ```
 1048	2026-04-01T08:06:34Z	BTCUSDT/BTCUSDT-fundingRate-2026-03.zip
@@ -253,21 +254,10 @@ See [`common.path`](../common/path.md) for implementation details.
 
 ### Diff semantics
 
-For each remote file, the workflow checks the local path at
-`archive_home / Path(remote.key)`:
-
-| Local state | Action | Reason |
-|-------------|--------|--------|
-| File does not exist | Download | `new` |
-| File exists, but its size differs from the remote listing | Download | `updated` |
-| File exists with a sibling `<filename>.aria2` control file | Download | `updated` |
-| File exists, `local_mtime < remote_last_modified` | Download | `updated` |
-| File exists with matching size, no control file, and `local_mtime >= remote_last_modified` | Skip | up to date |
-
-When a file is classified as `updated`, any stale `.verified` markers for the
-corresponding zip file are deleted before downloading. Both legacy markers
-(`file.zip.verified`) and timestamped markers (`file.zip.<ts>.verified`) are
-cleaned.
+Each ZIP and checksum file is compared independently against its local copy. Downloaded
+means successful transfer; Up to date means eligible to skip transfer. Neither establishes
+Verified status. The [workflow comparison rules](../workflow/README.md#download-comparison)
+explain size, timestamp, partial-download, and verification-marker handling.
 
 ### Dry-run output
 
@@ -283,8 +273,14 @@ to stderr: `N files to download, M up to date`.
 
 ### Normal output
 
+Download counts refer to individual archive objects, including ZIP and checksum files, rather
+than ZIP/checksum pairs. `downloaded` counts successful transfers in this run, `failed` counts
+unsuccessful transfers, and `skipped` counts objects eligible to skip. Listing failures are
+reported separately by symbol.
+
 In download mode, the following are printed to stderr:
-- Scan summary: symbol count and file counts.
+
+- Scan/diff diagnostics at INFO verbosity (`-v`).
 - A final summary line: `Done: N downloaded, M failed, K skipped`.
 - If `--progress-bar` is passed, an interactive tqdm bar is rendered on stderr
   during both the listing and download phases. Otherwise, sampled INFO log lines
@@ -403,8 +399,17 @@ selection flags, and the symbol list.
 
 ### Normal output
 
+Verification operates on ZIP files. `verified` counts ZIPs that passed SHA256 comparison in
+this run, `failed` counts ZIPs that failed, and `skipped` counts ZIPs accepted through cached
+verification without hashing again. Orphan ZIP and orphan checksum counts are separate;
+clearing an orphan ZIP's markers does not delete the ZIP.
+
+The dry-run summary's existing phrase `up to date` denotes cached verification skips. It does
+not use the download comparison rules or mean those ZIPs were checked again in this run.
+
 In verify mode, the following are printed to stderr:
-- Scan summary: file counts and orphan counts.
+
+- Scan diagnostics at INFO verbosity (`-v`).
 - A final summary line: `Done: N verified, M failed, K skipped`.
 - If `--progress-bar` is passed, interactive tqdm bars are rendered on stderr
   during both the scan and verify phases. Otherwise, sampled INFO log lines
@@ -422,7 +427,7 @@ If `--keep-failed` is enabled and there are failures:
 Failed files were kept because --keep-failed is enabled.
 ```
 
-Per-file failures are logged to stderr as `ERROR: {filename}: {detail}`.
+Per-file diagnostics on stderr include the failed filename and failure detail.
 
 Like dry-run mode, a successful but empty local scan still emits a warning to
 stderr instead of silently pretending everything is current.
@@ -436,20 +441,16 @@ stderr instead of silently pretending everything is current.
 
 ### Verified marker protocol
 
-After a successful verification, the workflow writes a timestamped marker file
-(`{zip_name}.{ts}.verified`) next to the zip. Subsequent runs skip the zip if the
-marker timestamp is still fresh relative to the zip and checksum file mtimes.
-Legacy markers without a timestamp are treated as invalid.
-
-See the [workflow reference](../workflow/#timestamped-marker-protocol) for
-protocol details.
+A successful comparison is cached in a timestamped marker beside the ZIP. See the
+[workflow reference](../workflow/README.md#timestamped-marker-protocol) for freshness and
+invalidation rules. Verification reads only local files; it does not fetch missing checksums.
 
 ### Exit codes
 
 | Situation | Exit code |
 |-----------|-----------|
-| All files verified successfully (including mismatches and orphan cleanup) | `0` |
-| Runtime error (e.g. process pool failure) | `2` |
+| Workflow completed, including reported checksum failures or orphan cleanup | `0` |
+| Unhandled runtime error (e.g. process pool failure) | Propagates; not translated to exit `2` |
 | BINANCE_DATATOOL_ARCHIVE_HOME not configured | `2` |
 | Argument validation error | `2` |
 

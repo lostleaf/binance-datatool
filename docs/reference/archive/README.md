@@ -1,6 +1,6 @@
 # binance_datatool.archive
 
-Archive access package for data.binance.vision.
+Remote access to data.binance.vision and local archive storage, checksum, and marker helpers.
 
 Most user-facing imports can prefer the package-level re-export surface:
 

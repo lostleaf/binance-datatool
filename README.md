@@ -10,7 +10,7 @@ A non-official Python toolkit for managing historical market data from
 [data.binance.vision](https://data.binance.vision/) — designed
 from the ground up for AI agents and quantitative workflows.
 
-**binance-datatool** is designed to make every command equally easy to call for AI agents and humans.:
+**binance-datatool** is designed to make every command equally easy to call for AI agents and humans:
 
 - **Composable CLI** — stdin/stdout pipelines let agents chain
   commands without glue code
@@ -23,9 +23,9 @@ from the ground up for AI agents and quantitative workflows.
 
 ## Agent Skill
 
-A packaged [Agent Skill](skills/binance-datatool/SKILL.md) is included in this repository. 
+A packaged [Agent Skill](skills/binance-datatool/SKILL.md) is included in this repository.
 
-It teaches agents how to use `binance-datatool` to discover, download, and 
+It teaches agents how to use `binance-datatool` to discover, download, and
 verify Binance historical market data — no manual command lookup required.
 
 ## Features
@@ -46,7 +46,7 @@ verify Binance historical market data — no manual command lookup required.
 ### Prerequisites
 
 - [Python](https://www.python.org/) 3.11+
-- [uv](https://docs.astral.sh/uv/) — fast Python package manager
+- [pipx](https://pipx.pypa.io/) — installs the CLI in an isolated environment
 - [aria2](https://aria2.github.io/) — required for the `download` command
 
 ### Install
@@ -90,9 +90,11 @@ binance-datatool verify spot --type klines --interval 1m BTCUSDT
 | Order book | `bookDepth`, `bookTicker` |
 | Index data | `indexPriceKlines`, `markPriceKlines`, `premiumIndexKlines` |
 
-Each type is available in **daily** or **monthly** partitions. Kline types
-support all standard intervals (`1m` `3m` `5m` `15m` `30m` `1h` `2h` `4h`
-`6h` `8h` `12h` `1d` `3d` `1w` `1mo`).
+The CLI accepts **daily** and **monthly** archive partitions. Availability depends on
+the market and dataset; for example, futures funding rates use monthly archives.
+Kline types require `--interval` (such as `1m`), independently of partition frequency.
+Use `list-files` to discover what Binance publishes for a selection. See
+[archive paths](docs/reference/archive/path-structure.md) and the [glossary](GLOSSARY.md).
 
 ## CLI Overview
 
@@ -104,11 +106,11 @@ directly on the root app:
 | `list-symbols` | List available symbols on the remote archive |
 | `list-files` | List archive files for given symbols |
 | `download` | Download new or updated archive files |
-| `verify` | Verify files against SHA256 checksums |
+| `verify` | Verify local ZIP files against sibling SHA256 checksums; no network access |
 
 > [!TIP]
-> Every command accepts symbols from **stdin** or as **positional args**,
-> making it trivial to compose pipelines:
+> `list-files`, `download`, and `verify` accept symbols from **stdin** or as
+> **positional args**, so they can consume `list-symbols` output:
 >
 > ```bash
 > binance-datatool list-symbols um --quote USDT \
@@ -117,6 +119,11 @@ directly on the root app:
 
 Run `binance-datatool --help` for the full option reference.
 
+Downloads count individual objects, including ZIP and checksum files. Successful transfer
+or an up-to-date local copy does not establish SHA256 verification. Verification counts ZIPs
+and distinguishes newly verified files from those skipped using cached verification. See
+[command outcomes](docs/reference/cli/archive.md) for counts, cleanup, and exit semantics.
+
 ## Architecture
 
 ```
@@ -124,7 +131,7 @@ CLI Layer        Thin Typer commands (argument parsing, output formatting)
     │
 Workflow Layer   Business logic (diff computation, verification protocol)
     │
-Archive Layer    S3 communication (HTTP listing, aria2 downloading, checksums)
+Archive Layer    Remote listings and downloads, local directories, checksums, markers
     │
 Common Layer     Shared types, enums, constants, and utilities
 ```
@@ -140,3 +147,35 @@ See [docs/architecture.md](docs/architecture.md) for a detailed design overview.
 | [Extending](docs/extending.md) | How to add commands, enums, workflows, and tests |
 | [Testing Guide](docs/reference/testing.md) | Test organization and conventions |
 | [Agent Skill](skills/binance-datatool/SKILL.md) | Packaged skill for agents |
+
+## Agent development
+
+Contributors using agents need the [Matt Pocock skills](https://github.com/mattpocock/skills)
+collection recorded in [skills-lock.json](skills-lock.json), including `writing-for-agents`
+for Markdown and `domain-modeling` for terminology and architectural decisions. These are
+development tools; using the Python package or CLI does not require them. The packaged
+[binance-datatool skill](skills/binance-datatool/SKILL.md) separately teaches CLI usage.
+
+For a fresh checkout, install [uv](https://docs.astral.sh/uv/) for Python development and
+Node.js/npm for the [skills installer](https://github.com/vercel-labs/skills), then run from
+the repository root:
+
+```bash
+uv sync
+npx skills experimental_install --agent codex claude-code --frozen-lockfile
+```
+
+Select the agent names you use. The installer restores the recorded collection into
+`.agents/skills/` and links agent-specific directories as needed. Its `--dry-run` option
+previews restoration without installing. Read [AGENTS.md](AGENTS.md) before working;
+[CLAUDE.md](CLAUDE.md) imports that same guide.
+
+The tracked skill record contains source repositories, skill paths, and content hashes.
+It does not pin an upstream commit or guarantee reproducible restoration. Frozen installation
+fails if fetched content would change the record. If upstream content has moved or changed,
+leave updates to the maintainer: manually review the upstream changes, run the installer's
+explicit update command when approved, and review the resulting skill-record diff. Skills
+are not updated automatically by package setup or CI. Installer options are documented in
+`npx skills --help`.
+
+For Python and testing conventions, read [coding standards](docs/agents/coding-standards.md).

@@ -32,7 +32,7 @@ so sub-command stdout remains safe to pipe.
 
 | Command Set | Description | Reference |
 |-------------|-------------|-----------|
-| Root data commands | S3 archive listing, download, and verify commands | [command reference](archive.md) |
+| Root data commands | Remote archive listing and download, local-only verification | [command reference](archive.md) |
 
 ---
 
