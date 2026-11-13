@@ -224,4 +224,3 @@ temp/
 .AGENTS.local.md
 .agents/
 .claude/
-skills-lock.json
