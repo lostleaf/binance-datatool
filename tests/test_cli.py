@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 import typer
+from loguru import logger
 from typer.testing import CliRunner
 
 from binance_datatool.archive import ArchiveFile
@@ -20,6 +21,7 @@ from binance_datatool.common import (
     UmSymbolFilter,
     UmSymbolInfo,
 )
+from binance_datatool.common.progress import ProgressEvent, make_reporter
 from binance_datatool.workflow import (
     ArchiveVerifyWorkflow,
     DiffEntry,
@@ -1405,3 +1407,40 @@ def test_cli_download_rejects_invalid_concurrency(no_workflow_execution, concurr
     assert result.exit_code == 2
     assert result.stdout == ""
     assert result.stderr.strip()
+
+
+@pytest.mark.parametrize("progress_bar", [False, True])
+@pytest.mark.parametrize("verbosity", [0, 1, 2])
+def test_cli_routes_progress_and_filtered_diagnostics_to_stderr(
+    monkeypatch, progress_bar: bool, verbosity: int
+) -> None:
+    """CLI verbosity preserves diagnostic payloads with and without a progress bar."""
+
+    async def fake_run(self) -> ListFilesResult:
+        with make_reporter(self.progress_bar, total=1, description="listing") as reporter:
+            logger.warning("warning-payload-32 BTCUSDT")
+            logger.info("info-payload-32 ETHUSDT")
+            logger.debug("debug-payload-32 BNBUSDT")
+            reporter.tick(ProgressEvent(name="BTCUSDT", ok=True))
+        return ListFilesResult(per_symbol=[])
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveListFilesWorkflow.run", fake_run)
+    result = runner.invoke(
+        app,
+        [
+            *(["-" + "v" * verbosity] if verbosity else []),
+            "list-files",
+            "um",
+            "--type",
+            "fundingRate",
+            *(["--progress-bar"] if progress_bar else []),
+            "BTCUSDT",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == ""
+    assert "\x1b[" not in result.stderr
+    assert result.stderr.count("warning-payload-32 BTCUSDT") == 1
+    assert result.stderr.count("info-payload-32 ETHUSDT") == (1 if verbosity >= 1 else 0)
+    assert result.stderr.count("debug-payload-32 BNBUSDT") == (1 if verbosity >= 2 else 0)

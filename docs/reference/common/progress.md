@@ -59,9 +59,17 @@ On context exit the reporter emits a final summary line
 
 ## `TqdmReporter`
 
-Interactive `tqdm`-based progress bar on stderr. While active, existing
-loguru stderr sinks are temporarily redirected through `tqdm.write()` so
-that log lines do not corrupt the progress bar.
+Interactive `tqdm`-based progress bar on stderr. The reporter manages the bar,
+counters, and `complete` / `aborted` summary. CLI logging writes through
+`tqdm.write()` so log lines appear above the active bar.
+
+Library callers retain ownership of their log sinks: the reporter leaves those
+sinks and their filtering, formatting, and destinations unchanged. Automatic
+redirection of library callers' stderr sinks has been removed. To coordinate
+library logs with a bar, configure a sink that writes through `tqdm.write()` or
+use `configure_cli_logging()` if replacing the current loguru configuration is
+appropriate. Otherwise, logs written directly to the same terminal can overlap
+the bar.
 
 | Parameter | Description |
 |-----------|-------------|

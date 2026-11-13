@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 from loguru import logger
+from tqdm import tqdm
 
 _FORMAT = (
     "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
@@ -29,4 +30,9 @@ def configure_cli_logging(verbosity: int) -> None:
     else:
         level = "WARNING"
 
-    logger.add(sys.stderr, level=level, format=_FORMAT, colorize=sys.stderr.isatty())
+    stderr = sys.stderr
+
+    def write_log_line(message: str) -> None:
+        tqdm.write(str(message), file=stderr, end="")
+
+    logger.add(write_log_line, level=level, format=_FORMAT, colorize=stderr.isatty())

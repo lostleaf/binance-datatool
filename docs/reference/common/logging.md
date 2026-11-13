@@ -9,7 +9,9 @@ configure_cli_logging(verbosity=1)  # 0 = WARNING, 1 = INFO, 2+ = DEBUG
 ```
 
 `configure_cli_logging(verbosity: int) -> None` resets `loguru` and installs a
-single `stderr` sink with a level chosen from the verbosity level. All levels
+single `stderr` sink with a level chosen from the verbosity level. The sink
+writes through `tqdm.write()`, which clears and redraws an active progress bar
+around each log message and writes normally when no bar is active. All levels
 use the same format:
 
 | `verbosity` | `loguru` level |
