@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import typer
 from loguru import logger
+from typer.main import get_command
 from typer.testing import CliRunner
 
 from binance_datatool.archive import ArchiveFile
@@ -48,6 +49,28 @@ def test_cli_help_is_available(command: list[str]) -> None:
     assert result.exit_code == 0
     assert result.stdout.strip()
     assert result.stderr == ""
+
+
+@pytest.mark.parametrize("command", ["list-symbols", "list-files", "download", "verify"])
+def test_cli_shared_options_keep_availability_and_defaults(command: str) -> None:
+    """Shared options retain their command availability and default values."""
+    registered = get_command(app).commands[command]
+    options = {
+        option: parameter.default
+        for parameter in registered.params
+        for option in getattr(parameter, "opts", [])
+    }
+
+    assert options["--freq"] == "daily"
+    assert options["--type"] == "klines"
+    if command == "list-symbols":
+        assert "--interval" not in options
+        assert "--progress-bar" not in options
+    else:
+        assert options["--interval"] is None
+        assert options["--progress-bar"] is False
+    if command == "download":
+        assert options["--concurrency"] == 64
 
 
 @pytest.fixture

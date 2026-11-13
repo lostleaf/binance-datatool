@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from binance_datatool.archive import ArchiveClient
+from binance_datatool.common.path import validate_interval
 
-from ._shared import validate_interval
 from .results import ListFilesResult, SymbolListFilesResult
 
 if TYPE_CHECKING:

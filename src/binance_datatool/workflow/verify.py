@@ -16,9 +16,9 @@ from binance_datatool.archive import (
     verify_single_file,
 )
 from binance_datatool.archive.symbol_dir import collect_markers_by_zip
+from binance_datatool.common.path import validate_interval
 from binance_datatool.common.progress import ProgressEvent, make_reporter
 
-from ._shared import validate_interval
 from .results import VerifyDiffResult, VerifyResult
 
 if TYPE_CHECKING:

@@ -216,10 +216,12 @@ User runs:
   └──────────────────────────────────────────────────────┘
 ```
 
-The `interval` vs `data_type.has_interval_layer` consistency check is enforced at
-all three layers (CLI, Workflow, and Client) so every entry point fails loud on the
-same contract violation. See the [archive client reference](../archive/client.md)
-and [S3 protocol reference](../archive/s3-protocol.md) for archive listing details.
+The CLI, workflow constructors, and archive client call the shared
+[`validate_interval()`](../common/path.md#validate_interval) rule at their existing
+entrypoints before I/O. Library callers receive `ValueError`; the CLI converts it
+to an `--interval` usage error with exit status 2. See the
+[archive client reference](../archive/client.md) and
+[S3 protocol reference](../archive/s3-protocol.md) for archive listing details.
 
 ## `download`
 

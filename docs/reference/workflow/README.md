@@ -95,9 +95,10 @@ result: ListFilesResult = await workflow.run()
 | `progress_bar` | `False` | When `True`, display an interactive tqdm progress bar on stderr via the shared progress-reporting framework. When `False`, emit sampled log lines at INFO level. See [`common.progress`](../common/progress.md). |
 | `client` | `None` | Optional pre-configured `ArchiveClient`. A default client is created when omitted. |
 
-The constructor validates the `interval` vs `data_type.has_interval_layer` invariant
-and raises `ValueError` on mismatch. This is the workflow-layer line of defense in
-the three-layer interval consistency check (CLI / Workflow / Client).
+The constructor calls the shared
+[`validate_interval()`](../common/path.md#validate_interval) rule and raises
+`ValueError` on mismatch before I/O. The CLI and archive client use the same rule
+at their existing validation boundaries.
 
 ### `run()`
 

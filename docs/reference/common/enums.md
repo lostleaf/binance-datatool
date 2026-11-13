@@ -37,9 +37,9 @@ Enumerations for market segments, data frequencies, dataset types, and contract 
 
 The `has_interval_layer` property returns `True` for data types whose archive
 path includes an interval directory segment (e.g. `1m`, `1h`) between the symbol
-and the data files. It is the single source of truth for the
-`interval`-vs-`data_type` consistency rule enforced by the archive client, the
-`ArchiveListFilesWorkflow` constructor, and the `archive list-files` CLI command.
+and the data files. It supplies the dataset classification used by the shared
+[`validate_interval()`](path.md#validate_interval) rule. The CLI, workflow constructors,
+and archive client invoke that rule at their existing validation boundaries.
 
 **`ContractType(StrEnum)`** — Futures contract settlement style.
 

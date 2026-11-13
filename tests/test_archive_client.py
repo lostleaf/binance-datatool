@@ -201,6 +201,57 @@ async def test_archive_client_list_symbol_files_parses_xml(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("trade_type", "data_freq", "data_type", "symbol", "interval", "expected"),
+    [
+        (
+            TradeType.spot,
+            DataFrequency.daily,
+            DataType.klines,
+            "BTCUSDT",
+            "1m",
+            "data/spot/daily/klines/BTCUSDT/1m/",
+        ),
+        (
+            TradeType.um,
+            DataFrequency.monthly,
+            DataType.funding_rate,
+            "BTCUSDT",
+            None,
+            "data/futures/um/monthly/fundingRate/BTCUSDT/",
+        ),
+        (
+            TradeType.cm,
+            DataFrequency.daily,
+            DataType.metrics,
+            "BTCUSD_PERP",
+            None,
+            "data/futures/cm/daily/metrics/BTCUSD_PERP/",
+        ),
+    ],
+)
+async def test_archive_client_symbol_prefix_matches_archive_layout(
+    xml_responses: XmlResponses,
+    trade_type: TradeType,
+    data_freq: DataFrequency,
+    data_type: DataType,
+    symbol: str,
+    interval: str | None,
+    expected: str,
+) -> None:
+    """Archive requests retain the exact market, symbol and interval directory prefix."""
+    pages, queries = xml_responses
+    pages.append("<ListBucketResult/>")
+
+    files = await ArchiveClient().list_symbol_files(
+        trade_type, data_freq, data_type, symbol, interval
+    )
+
+    assert files == []
+    assert queries == [{"delimiter": ["/"], "prefix": [expected]}]
+
+
+@pytest.mark.asyncio
 async def test_archive_client_list_symbol_files_normalizes_xml_text(
     xml_responses: XmlResponses,
 ) -> None:

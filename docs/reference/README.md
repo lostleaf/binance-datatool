@@ -30,7 +30,7 @@ from binance_datatool.common.path import ARCHIVE_HOME_ENV_VAR
 | [common.filter](common/filter.md) | Typed symbol filters and `build_symbol_filter()`. |
 | [common.types](common/types.md) | SymbolInfoBase and per-market symbol info dataclasses. |
 | [common.logging](common/logging.md) | `configure_cli_logging` helper for CLI entry points. |
-| [common.path](common/path.md) | Archive-home directory resolution. |
+| [common.path](common/path.md) | Archive layout, interval validation, and archive-home resolution. |
 | [common.symbols](common/symbols.md) | Symbol inference functions and quote parsing rules. |
 | [common.progress](common/progress.md) | Progress-reporting framework (`ProgressEvent`, `ProgressReporter`, `make_reporter`). |
 

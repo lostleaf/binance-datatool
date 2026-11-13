@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from datetime import UTC
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, TypeAlias
 
 import typer
 from loguru import logger
@@ -20,6 +20,7 @@ from binance_datatool.common import (
     build_symbol_filter,
     resolve_archive_home,
 )
+from binance_datatool.common.path import archive_path_parts, validate_interval
 from binance_datatool.workflow import (
     ArchiveDownloadWorkflow,
     ArchiveListFilesWorkflow,
@@ -37,17 +38,32 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+DataFrequencyOption: TypeAlias = Annotated[
+    DataFrequency,
+    typer.Option("--freq", help="Partition frequency."),
+]
+DataTypeOption: TypeAlias = Annotated[
+    DataType,
+    typer.Option("--type", help="Dataset type."),
+]
+IntervalOption: TypeAlias = Annotated[
+    str | None,
+    typer.Option("--interval", help="Interval for kline-class data types."),
+]
+ProgressBarOption: TypeAlias = Annotated[
+    bool,
+    typer.Option(
+        "--progress-bar",
+        help=("Show interactive tqdm progress bar. By default no interactive progress is shown."),
+    ),
+]
+
+
 @app.command("list-symbols")
 def list_symbols_command(
     trade_type: Annotated[TradeType, typer.Argument(help="Market segment.")],
-    data_freq: Annotated[
-        DataFrequency,
-        typer.Option("--freq", help="Partition frequency."),
-    ] = DataFrequency.daily,
-    data_type: Annotated[
-        DataType,
-        typer.Option("--type", help="Dataset type."),
-    ] = DataType.klines,
+    data_freq: DataFrequencyOption = DataFrequency.daily,
+    data_type: DataTypeOption = DataType.klines,
     quotes: Annotated[
         list[str] | None,
         typer.Option("--quote", help="Filter by quote asset. Repeat to allow multiple values."),
@@ -110,16 +126,18 @@ def _resolve_symbols(symbols: list[str] | None) -> list[str]:
 
 def _validate_interval(data_type: DataType, interval: str | None) -> None:
     """Validate whether an interval matches the selected data type."""
-    if data_type.has_interval_layer and interval is None:
-        raise typer.BadParameter(
-            "Option '--interval' is required for kline-class data types.",
-            param_hint="--interval",
-        )
-    if not data_type.has_interval_layer and interval is not None:
-        raise typer.BadParameter(
-            "Option '--interval' is only valid for kline-class data types.",
-            param_hint="--interval",
-        )
+    try:
+        validate_interval(data_type, interval)
+    except ValueError as exc:
+        messages = {
+            "interval is required for kline-class data_type": (
+                "Option '--interval' is required for kline-class data types."
+            ),
+            "interval is not applicable to non-kline data_type": (
+                "Option '--interval' is only valid for kline-class data types."
+            ),
+        }
+        raise typer.BadParameter(messages[str(exc)], param_hint="--interval") from exc
 
 
 def _matches_output_filter(
@@ -143,7 +161,7 @@ def _format_relative_path(
     data_type: DataType,
 ) -> str:
     """Format a key relative to the shared archive prefix."""
-    prefix = f"data/{trade_type.s3_path}/{data_freq.value}/{data_type.value}/"
+    prefix = "/".join(archive_path_parts(trade_type, data_freq, data_type)) + "/"
     return key.removeprefix(prefix)
 
 
@@ -156,7 +174,7 @@ def _format_local_relative_path(
     data_type: DataType,
 ) -> str:
     """Format a local archive path relative to the shared archive prefix."""
-    prefix = archive_home / "data" / trade_type.s3_path / data_freq.value / data_type.value
+    prefix = archive_home.joinpath(*archive_path_parts(trade_type, data_freq, data_type))
     return str(path.relative_to(prefix))
 
 
@@ -221,18 +239,9 @@ def _finalize_download_result(result: DiffResult | DownloadResult) -> None:
 def list_files_command(
     trade_type: Annotated[TradeType, typer.Argument(help="Market segment.")],
     symbols: Annotated[list[str] | None, typer.Argument(help="Symbols to list files for.")] = None,
-    data_freq: Annotated[
-        DataFrequency,
-        typer.Option("--freq", help="Partition frequency."),
-    ] = DataFrequency.daily,
-    data_type: Annotated[
-        DataType,
-        typer.Option("--type", help="Dataset type."),
-    ] = DataType.klines,
-    interval: Annotated[
-        str | None,
-        typer.Option("--interval", help="Interval for kline-class data types."),
-    ] = None,
+    data_freq: DataFrequencyOption = DataFrequency.daily,
+    data_type: DataTypeOption = DataType.klines,
+    interval: IntervalOption = None,
     long_format: Annotated[
         bool,
         typer.Option("-l", "--long", help="Print three-column TSV output."),
@@ -245,15 +254,7 @@ def list_files_command(
         bool,
         typer.Option("--only-checksum", help="Print only .zip.CHECKSUM files."),
     ] = False,
-    progress_bar: Annotated[
-        bool,
-        typer.Option(
-            "--progress-bar",
-            help=(
-                "Show interactive tqdm progress bar. By default no interactive progress is shown."
-            ),
-        ),
-    ] = False,
+    progress_bar: ProgressBarOption = False,
 ) -> None:
     """List archive files under one or more symbol directories."""
     if only_zip and only_checksum:
@@ -319,18 +320,9 @@ def download_command(
     ctx: typer.Context,
     trade_type: Annotated[TradeType, typer.Argument(help="Market segment.")],
     symbols: Annotated[list[str] | None, typer.Argument(help="Symbols to download.")] = None,
-    data_freq: Annotated[
-        DataFrequency,
-        typer.Option("--freq", help="Partition frequency."),
-    ] = DataFrequency.daily,
-    data_type: Annotated[
-        DataType,
-        typer.Option("--type", help="Dataset type."),
-    ] = DataType.klines,
-    interval: Annotated[
-        str | None,
-        typer.Option("--interval", help="Interval for kline-class data types."),
-    ] = None,
+    data_freq: DataFrequencyOption = DataFrequency.daily,
+    data_type: DataTypeOption = DataType.klines,
+    interval: IntervalOption = None,
     dry_run: Annotated[
         bool,
         typer.Option(
@@ -348,15 +340,7 @@ def download_command(
         int,
         typer.Option("--concurrency", min=1, help="Number of concurrent aria2 downloads."),
     ] = 64,
-    progress_bar: Annotated[
-        bool,
-        typer.Option(
-            "--progress-bar",
-            help=(
-                "Show interactive tqdm progress bar. By default no interactive progress is shown."
-            ),
-        ),
-    ] = False,
+    progress_bar: ProgressBarOption = False,
 ) -> None:
     """Download archive files into the local archive directory."""
     _validate_interval(data_type, interval)
@@ -407,18 +391,9 @@ def verify_command(
     ctx: typer.Context,
     trade_type: Annotated[TradeType, typer.Argument(help="Market segment.")],
     symbols: Annotated[list[str] | None, typer.Argument(help="Symbols to verify.")] = None,
-    data_freq: Annotated[
-        DataFrequency,
-        typer.Option("--freq", help="Partition frequency."),
-    ] = DataFrequency.daily,
-    data_type: Annotated[
-        DataType,
-        typer.Option("--type", help="Dataset type."),
-    ] = DataType.klines,
-    interval: Annotated[
-        str | None,
-        typer.Option("--interval", help="Interval for kline-class data types."),
-    ] = None,
+    data_freq: DataFrequencyOption = DataFrequency.daily,
+    data_type: DataTypeOption = DataType.klines,
+    interval: IntervalOption = None,
     keep_failed: Annotated[
         bool,
         typer.Option("--keep-failed", help="Keep failed zip and checksum files."),
@@ -427,15 +402,7 @@ def verify_command(
         bool,
         typer.Option("-n", "--dry-run", help="Show what would be verified without writing files."),
     ] = False,
-    progress_bar: Annotated[
-        bool,
-        typer.Option(
-            "--progress-bar",
-            help=(
-                "Show interactive tqdm progress bar. By default no interactive progress is shown."
-            ),
-        ),
-    ] = False,
+    progress_bar: ProgressBarOption = False,
 ) -> None:
     """Verify local archive zip files against sibling checksum files."""
     _validate_interval(data_type, interval)

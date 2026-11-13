@@ -1,6 +1,45 @@
 # binance_datatool.common.path
 
-Local path helpers for archive-managed data.
+Archive layout, interval validation, and local archive-home resolution.
+
+## `archive_path_parts()`
+
+```python
+from pathlib import Path
+
+from binance_datatool.common import DataFrequency, DataType, TradeType
+from binance_datatool.common.path import archive_path_parts
+
+archive_home = Path("/data/binance_archive")
+parts = archive_path_parts(
+    TradeType.um, DataFrequency.daily, DataType.klines, "BTCUSDT", "1m"
+)
+# ("data", "futures/um", "daily", "klines", "BTCUSDT", "1m")
+remote_prefix = "/".join(parts) + "/"
+local_directory = archive_home.joinpath(*parts)
+```
+
+Owns the archive directory layout used by remote listings, local symbol directories,
+and CLI relative-path formatting. Omit `symbol` and `interval` to obtain the dataset
+prefix. It constructs components without validating interval compatibility or performing I/O.
+
+## `validate_interval()`
+
+```python
+from binance_datatool.common import DataType
+from binance_datatool.common.path import validate_interval
+
+validate_interval(DataType.klines, "1m")
+validate_interval(DataType.funding_rate, None)
+```
+
+Raises `ValueError` when a kline-class dataset lacks an interval or a non-kline dataset
+receives one. This is the shared implementation used at the existing CLI, workflow,
+and archive-client validation boundaries before I/O. The CLI converts the error to an
+`--interval` usage error with exit status 2. This rule checks presence, not interval values.
+
+Both helpers are imported from this module rather than re-exported from
+`binance_datatool.common`.
 
 ## `resolve_archive_home()`
 

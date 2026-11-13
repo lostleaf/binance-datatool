@@ -14,6 +14,7 @@ from loguru import logger
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from binance_datatool.common import S3_HTTP_TIMEOUT_SECONDS, S3_LISTING_PREFIX
+from binance_datatool.common.path import archive_path_parts, validate_interval
 from binance_datatool.common.progress import ProgressEvent, make_reporter
 
 if TYPE_CHECKING:
@@ -28,7 +29,7 @@ def _build_prefix(
     data_type: DataType,
 ) -> str:
     """Build an S3 prefix for a market archive directory."""
-    return f"data/{trade_type.s3_path}/{data_freq.value}/{data_type.value}/"
+    return "/".join(archive_path_parts(trade_type, data_freq, data_type)) + "/"
 
 
 def _build_listing_url(prefix: str, marker: str | None = None) -> str:
@@ -295,16 +296,10 @@ class ArchiveClient:
             ValueError: If ``interval`` does not match
                 ``data_type.has_interval_layer``.
         """
-        if data_type.has_interval_layer and interval is None:
-            msg = "interval is required for kline-class data_type"
-            raise ValueError(msg)
-        if not data_type.has_interval_layer and interval is not None:
-            msg = "interval is not applicable to non-kline data_type"
-            raise ValueError(msg)
-
-        prefix = f"{_build_prefix(trade_type, data_freq, data_type)}{symbol}/"
-        if interval is not None:
-            prefix = f"{prefix}{interval}/"
+        validate_interval(data_type, interval)
+        prefix = (
+            "/".join(archive_path_parts(trade_type, data_freq, data_type, symbol, interval)) + "/"
+        )
 
         if session is None:
             async with self._create_session() as local_session:

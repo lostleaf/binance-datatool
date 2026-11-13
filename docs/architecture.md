@@ -11,7 +11,7 @@ facilities from lower layers directly; lower layers do not import higher ones.
 
 | Layer | Package | Responsibility |
 |-------|---------|----------------|
-| Common | `binance_datatool.common` | Shared enums, symbol inference and filters, archive-home resolution, logging, and progress reporting. |
+| Common | `binance_datatool.common` | Shared enums, symbol inference and filters, archive layout and interval validation, archive-home resolution, logging, and progress reporting. |
 | Archive | `binance_datatool.archive` | S3 listings, archive-object metadata, aria2 transfers, SHA256 helpers, local symbol directories, and verification markers. |
 | Workflow | `binance_datatool.workflow` | Symbol classification, file listing and failure isolation, remote/local download comparison, local scanning, verification, and cleanup. |
 | CLI | `binance_datatool.cli` | Argument validation, workflow construction, output formatting, and exit status. |

@@ -9,6 +9,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from binance_datatool.common.path import archive_path_parts
+
 if TYPE_CHECKING:
     from collections.abc import Collection, Sequence
     from pathlib import Path
@@ -216,8 +218,8 @@ def create_symbol_archive_dir(
     interval: str | None = None,
 ) -> SymbolArchiveDir:
     """Build the local directory helper that stores files for one symbol."""
-    path = archive_home / "data" / trade_type.s3_path / data_freq.value / data_type.value / symbol
-    if interval is not None:
-        path /= interval
+    path = archive_home.joinpath(
+        *archive_path_parts(trade_type, data_freq, data_type, symbol, interval)
+    )
 
     return SymbolArchiveDir(path)
