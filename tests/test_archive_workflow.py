@@ -6,6 +6,7 @@ import hashlib
 import os
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import aiohttp
 import pytest
@@ -900,3 +901,31 @@ def test_verify_workflow_marker_timestamp_rounding(tmp_path) -> None:
     assert isinstance(result, VerifyDiffResult)
     assert result.skipped == 1
     assert result.to_verify == []
+
+
+@pytest.mark.parametrize("concurrency", [64, 128])
+async def test_archive_download_workflow_sets_aria2_concurrency(
+    monkeypatch, tmp_path, sample_archive_files, concurrency
+) -> None:
+    """Workflow concurrency should control the external aria2 invocation."""
+    commands = []
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/aria2c")
+
+    def fake_run(cmd, **kwargs):
+        commands.append(cmd)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    workflow = ArchiveDownloadWorkflow(
+        trade_type=TradeType.um,
+        data_freq=DataFrequency.monthly,
+        data_type=DataType.funding_rate,
+        symbols=["BTCUSDT"],
+        archive_home=tmp_path,
+        client=FakeArchiveClient(files_by_symbol={"BTCUSDT": sample_archive_files}),
+        concurrency=concurrency,
+    )
+    result = await workflow.run()
+    assert result.downloaded == 2
+    assert result.failed == 0
+    assert commands and all(f"-j{concurrency}" in cmd for cmd in commands)

@@ -99,6 +99,7 @@ def _run_batch(
     requests: Sequence[DownloadRequest],
     *,
     inherit_proxy: bool,
+    concurrency: int,
 ) -> int:
     """Run aria2 for a single batch and return its exit code."""
     input_file_path = _write_input_file(requests)
@@ -107,7 +108,7 @@ def _run_batch(
             executable,
             "-i",
             str(input_file_path),
-            "-j32",
+            f"-j{concurrency}",
             "-x4",
             "-q",
             "--allow-overwrite=true",
@@ -147,7 +148,8 @@ def download_archive_files(
     requests: Sequence[DownloadRequest],
     *,
     inherit_proxy: bool,
-    batch_size: int = 4096,
+    batch_size: int = 512,
+    concurrency: int = 64,
     max_tries: int = 3,
     progress_bar: bool = False,
 ) -> Aria2DownloadResult:
@@ -156,13 +158,19 @@ def download_archive_files(
     Args:
         requests: Direct download requests to execute.
         inherit_proxy: Whether aria2 should inherit proxy-related env vars.
-        batch_size: Number of files per aria2 batch.
+        concurrency: Number of concurrent aria2 downloads.
+        batch_size: Number of files per aria2 batch, capped at 512 for progress.
         max_tries: Maximum retry rounds for failed batches.
         progress_bar: Whether to render an interactive tqdm progress bar.
 
     Returns:
         Aggregated aria2 result.
     """
+    if concurrency < 1:
+        raise ValueError("concurrency must be at least 1")
+    if batch_size < 1:
+        raise ValueError("batch_size must be at least 1")
+    batch_size = min(batch_size, 512)
     if not requests:
         return Aria2DownloadResult(requested=0, failed_requests=[])
 
@@ -178,10 +186,13 @@ def download_archive_files(
             progress_bar,
             total=len(pending),
             description=description,
+            log_interval=1,
         ) as reporter:
             for batch_index, batch in enumerate(batches, start=1):
                 batch_label = f"batch {batch_index}/{len(batches)}"
-                returncode = _run_batch(executable, batch, inherit_proxy=inherit_proxy)
+                returncode = _run_batch(
+                    executable, batch, inherit_proxy=inherit_proxy, concurrency=concurrency
+                )
 
                 if returncode == 0:
                     reporter.tick(ProgressEvent(name=batch_label, ok=True, count=len(batch)))

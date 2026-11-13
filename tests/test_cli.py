@@ -1317,3 +1317,50 @@ def test_cli_list_files_long_output_integration() -> None:
     assert lines
     assert all(line.count("\t") == 2 for line in lines)
     assert all(".CHECKSUM" not in line for line in lines)
+
+
+@pytest.mark.parametrize(("options", "expected"), [([], 64), (["--concurrency", "128"], 128)])
+def test_cli_download_passes_concurrency(monkeypatch, options, expected) -> None:
+    """Download concurrency should reach the workflow, including its default."""
+
+    async def fake_run(self) -> DownloadResult:
+        assert self.concurrency == expected
+        return DownloadResult(total_remote=0, skipped=0, downloaded=0, failed=0, listing_errors=[])
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveDownloadWorkflow.run", fake_run)
+    result = runner.invoke(
+        app,
+        [
+            "--archive-home",
+            "/tmp/archive-home",
+            "download",
+            "um",
+            "--type",
+            "fundingRate",
+            *options,
+            "BTCUSDT",
+        ],
+    )
+    assert result.exit_code == 0
+
+
+@pytest.mark.parametrize("concurrency", ["0", "-1"])
+def test_cli_download_rejects_invalid_concurrency(no_workflow_execution, concurrency) -> None:
+    """Nonpositive concurrency should be rejected before workflow execution."""
+    result = runner.invoke(
+        app,
+        [
+            "--archive-home",
+            "/tmp/archive-home",
+            "download",
+            "um",
+            "--type",
+            "fundingRate",
+            "--concurrency",
+            concurrency,
+            "BTCUSDT",
+        ],
+    )
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert result.stderr.strip()

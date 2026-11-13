@@ -82,9 +82,9 @@ class _ReporterState:
 class LogReporter(_ReporterState):
     """Emit sampled progress lines to the shared loguru info channel."""
 
-    def __init__(self, *, total: int, description: str) -> None:
+    def __init__(self, *, total: int, description: str, log_interval: int | None = None) -> None:
         super().__init__(total=total, description=description)
-        self._step = max(1, total // 20)
+        self._step = max(1, total // 20) if log_interval is None else max(1, log_interval)
 
     def __enter__(self) -> LogReporter:
         return self
@@ -306,6 +306,7 @@ def make_reporter(
     *,
     total: int,
     description: str,
+    log_interval: int | None = None,
 ) -> ProgressReporter:
     """Create the configured reporter implementation.
 
@@ -315,13 +316,15 @@ def make_reporter(
             that emits sampled log lines.
         total: Total number of expected progress units.
         description: Human-readable label shown in progress output.
+        log_interval: Units between sampled log updates; defaults to about 20
+            updates over the run. Use 1 to log each tick. Ignored by the bar.
 
     Returns:
         A :class:`ProgressReporter` ready for use as a context manager.
     """
     if progress_bar:
         return TqdmReporter(total=total, description=description)
-    return LogReporter(total=total, description=description)
+    return LogReporter(total=total, description=description, log_interval=log_interval)
 
 
 __all__ = [

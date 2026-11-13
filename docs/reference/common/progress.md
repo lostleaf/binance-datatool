@@ -44,7 +44,9 @@ than constructing reporters directly.
 ## `LogReporter`
 
 Emits sampled progress lines to loguru's `INFO` channel. Progress lines are
-rate-limited to ~20 steps so high-volume workflows do not flood the log.
+rate-limited to ~20 steps by default. An explicit `log_interval` overrides the
+number of units between sampled updates; `1` emits every tick. Downloads use
+`1` with batches of at most 512 files, while listing and scanning retain the default.
 
 On context exit the reporter emits a final summary line
 (`complete` or `aborted`) with cumulative ok/fail counts.
@@ -53,6 +55,7 @@ On context exit the reporter emits a final summary line
 |-----------|-------------|
 | `total` | Expected number of units. |
 | `description` | Human-readable label (e.g. `"download"`, `"verify"`). |
+| `log_interval` | Optional interval in progress units, clamped to at least 1. `None` uses `max(1, total // 20)`. |
 
 ## `TqdmReporter`
 
@@ -86,6 +89,7 @@ with make_reporter(progress_bar=True, total=100, description="download") as repo
 | `progress_bar` | `bool` | `True` → `TqdmReporter`; `False` → `LogReporter`. |
 | `total` | `int` | Expected number of progress units. |
 | `description` | `str` | Human-readable label for the operation. |
+| `log_interval` | `int \| None` | Log sampling interval; `None` preserves proportional sampling, `1` logs every tick. Ignored when `progress_bar=True`. |
 
 Returns a `ProgressReporter`-compatible context manager.
 

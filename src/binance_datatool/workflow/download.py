@@ -43,6 +43,7 @@ class ArchiveDownloadWorkflow:
         progress_bar: bool = False,
         client: ArchiveClient | None = None,
         download_func: Callable[..., Aria2DownloadResult] | None = None,
+        concurrency: int = 64,
     ) -> None:
         """Initialize the download workflow.
 
@@ -55,10 +56,14 @@ class ArchiveDownloadWorkflow:
             interval: Interval directory for kline-class data types.
             dry_run: When ``True``, compute the diff without downloading.
             inherit_aria2_proxy: Whether aria2c should inherit proxy env vars.
+            concurrency: Number of concurrent aria2 downloads.
             progress_bar: Whether to display a tqdm progress bar on stderr.
             client: Optional pre-configured archive client.
             download_func: Optional download callable for dependency injection.
         """
+        if concurrency < 1:
+            raise ValueError("concurrency must be at least 1")
+        self.concurrency = concurrency
         self.trade_type = trade_type
         self.data_freq = data_freq
         self.data_type = data_type
@@ -183,6 +188,7 @@ class ArchiveDownloadWorkflow:
         aria2_result = self.download_func(
             requests,
             inherit_proxy=self.inherit_aria2_proxy,
+            concurrency=self.concurrency,
             progress_bar=self.progress_bar,
         )
 

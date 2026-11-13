@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
+from loguru import logger
+from tqdm import tqdm
 
 from binance_datatool.archive.downloader import (
     Aria2NotFoundError,
@@ -14,6 +16,7 @@ from binance_datatool.archive.downloader import (
     _is_download_complete,
     download_archive_files,
 )
+from binance_datatool.common.progress import make_reporter
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -66,6 +69,7 @@ def test_download_archive_files_strips_proxy_env_by_default(monkeypatch, tmp_pat
     assert result.succeeded == 1
     assert commands
     cmd, env = commands[0]
+    assert "-j64" in cmd
     assert "--allow-overwrite=true" in cmd
     assert "--auto-file-renaming=false" in cmd
     assert env is not None
@@ -217,3 +221,105 @@ def test_find_missing_requests_filters_correctly(tmp_path: Path) -> None:
     assert len(missing) == 2
     assert missing[0].local_path.name == "missing.zip"
     assert missing[1].local_path.name == "partial.zip"
+
+
+@pytest.mark.parametrize("progress_bar", [False, True])
+@pytest.mark.parametrize("batch_options", [{}, {"batch_size": 4096}, {"batch_size": 128}])
+def test_download_progress_advances_within_512_files(
+    monkeypatch, tmp_path, capsys, progress_bar, batch_options
+) -> None:
+    """Large downloads should expose every batch through logs and the bar."""
+    batch_lengths = []
+    visible_counts = []
+    reporters = []
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/aria2c")
+
+    def capture_reporter(*args, **kwargs):
+        reporter = make_reporter(*args, **kwargs)
+        reporters.append(reporter)
+        return reporter
+
+    def capture_log(message):
+        visible_counts.append(reporters[-1].done)
+
+    original_update = tqdm.update
+
+    def capture_bar_update(bar, count):
+        original_update(bar, count)
+        visible_counts.append(bar.n)
+
+    monkeypatch.setattr("binance_datatool.archive.downloader.make_reporter", capture_reporter)
+    monkeypatch.setattr(tqdm, "update", capture_bar_update)
+
+    def fake_run(cmd, **kwargs):
+        with open(cmd[cmd.index("-i") + 1], encoding="utf-8") as input_file:
+            batch_lengths.append(sum(line.startswith("https://") for line in input_file))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    requests = [
+        DownloadRequest(
+            url=f"https://example.com/{index}.zip", local_path=tmp_path / f"{index}.zip"
+        )
+        for index in range(12289)
+    ]
+    sink_id = logger.add(
+        capture_log,
+        filter=lambda record: record["name"] == "binance_datatool.common.progress",
+    )
+    try:
+        result = download_archive_files(
+            requests, inherit_proxy=False, progress_bar=progress_bar, **batch_options
+        )
+    finally:
+        logger.remove(sink_id)
+
+    output = capsys.readouterr()
+    gaps = [
+        current - previous
+        for previous, current in zip([0, *visible_counts], visible_counts, strict=False)
+    ]
+    assert result.succeeded == 12289
+    assert result.failed_requests == []
+    assert sum(batch_lengths) == 12289
+    assert max(batch_lengths) <= 512
+    assert (reporters[0].done, reporters[0].ok, reporters[0].fail) == (12289, 12289, 0)
+    assert visible_counts[-1] == 12289
+    assert max(gaps) <= 512
+    assert output.out == ""
+    if progress_bar:
+        assert output.err.strip()
+
+
+@pytest.mark.parametrize("concurrency", [0, -1])
+def test_download_rejects_invalid_concurrency(concurrency) -> None:
+    """Importable downloads reject invalid concurrency even for an empty plan."""
+    with pytest.raises(ValueError):
+        download_archive_files([], inherit_proxy=False, concurrency=concurrency)
+
+
+def test_download_preserves_failed_counts_after_per_file_retries(monkeypatch, tmp_path) -> None:
+    """Retry exhaustion preserves successes and retries only incomplete files."""
+    inputs = []
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/aria2c")
+
+    def fake_run(cmd, **kwargs):
+        with open(cmd[cmd.index("-i") + 1], encoding="utf-8") as input_file:
+            inputs.append([line.strip() for line in input_file if line.startswith("https://")])
+        (tmp_path / "ok.zip").write_bytes(b"complete")
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    requests = [
+        DownloadRequest(url="https://example.com/ok.zip", local_path=tmp_path / "ok.zip"),
+        DownloadRequest(url="https://example.com/fail.zip", local_path=tmp_path / "fail.zip"),
+    ]
+    result = download_archive_files(requests, inherit_proxy=False, max_tries=3)
+    assert inputs == [
+        ["https://example.com/ok.zip", "https://example.com/fail.zip"],
+        ["https://example.com/fail.zip"],
+        ["https://example.com/fail.zip"],
+    ]
+    assert result.requested == 2
+    assert result.succeeded == 1
+    assert result.failed_requests == requests[1:]

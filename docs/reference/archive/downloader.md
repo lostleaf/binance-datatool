@@ -27,7 +27,8 @@ from binance_datatool.archive import DownloadRequest, download_archive_files
 result = download_archive_files(
     requests,
     inherit_proxy=False,
-    batch_size=4096,
+    batch_size=512,
+    concurrency=64,
     max_tries=3,
     progress_bar=False,
 )
@@ -37,11 +38,16 @@ result = download_archive_files(
 |-----------|---------|-------------|
 | `requests` | *(required)* | Sequence of `DownloadRequest` items to download. |
 | `inherit_proxy` | *(required)* | When `False`, proxy env vars (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, etc.) are stripped from the aria2c subprocess environment. When `True`, aria2c inherits the caller's proxy settings. |
-| `batch_size` | `4096` | Maximum files per aria2c invocation. Larger sets are chunked. |
+| `batch_size` | `512` | Maximum files per aria2c invocation, capped at 512 to bound progress gaps. Must be at least 1. |
+| `concurrency` | `64` | Concurrent aria2 downloads (`-j`). Must be at least 1. |
 | `max_tries` | `3` | Maximum retry rounds for incomplete files. |
 | `progress_bar` | `False` | When `True`, display an interactive tqdm progress bar on stderr via the shared progress-reporting framework. When `False`, emit sampled log lines at INFO level. See [`common.progress`](../common/progress.md). |
 
-Returns an `Aria2DownloadResult`.
+Returns an `Aria2DownloadResult`. Invalid `concurrency` or `batch_size` raises `ValueError`.
+
+Every completed batch emits progress: one success event, or separate success/failure
+events for a partial batch. Download logs use `log_interval=1` so large totals cannot
+suppress these updates; the bar advances on the same events.
 
 Aria2 is invoked with `--allow-overwrite=true` and
 `--auto-file-renaming=false` so updated files replace existing ones instead of

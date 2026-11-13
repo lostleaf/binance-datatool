@@ -149,10 +149,13 @@ binance-datatool -v download <TRADE_TYPE> [SYMBOLS...] [OPTIONS]
 | `--interval`      | Interval for kline-class data types                    |
 | `-n` / `--dry-run`| Preview what would be downloaded without writing files |
 | `--aria2-proxy`   | Let aria2c inherit proxy env vars                      |
+| `--concurrency N` | Concurrent aria2 downloads (default: `64`, minimum: `1`) |
 | `--progress-bar`  | Show progress bar on stderr                            |
 
 Dry-run output: TSV lines `<reason>\t<size>\t<path>` where reason is `new` or `updated`.
 Real-run output: download stats on stderr (downloaded/failed/skipped counts).
+With `-v` or `--progress-bar`, download progress advances after each batch of at most
+512 files, including retry rounds. Invalid concurrency exits `2`.
 
 Exit codes: 0 = success, 2 = partial failure.
 

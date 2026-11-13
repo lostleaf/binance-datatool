@@ -227,7 +227,7 @@ and [S3 protocol reference](../archive/s3-protocol.md) for archive listing detai
 binance-datatool [--archive-home PATH] download <TRADE_TYPE> [SYMBOLS...]
     [--freq FREQ] [--type TYPE] [--interval INTERVAL]
     [-n | --dry-run]
-    [--aria2-proxy]
+    [--aria2-proxy] [--concurrency N]
     [--progress-bar]
 ```
 
@@ -243,6 +243,7 @@ Requires `aria2c` to be available in `PATH`.
 | `--interval` | `str \| None` | `None` | Kline interval directory. Same validation as `list-files`. |
 | `-n` / `--dry-run` | `bool` | `False` | Show what would be downloaded without writing files. Outputs TSV to stdout. |
 | `--aria2-proxy` | `bool` | `False` | Allow aria2c to inherit system proxy environment variables. By default, proxy env vars (`HTTP_PROXY`, `HTTPS_PROXY`, etc.) are stripped from the aria2c subprocess. |
+| `--concurrency` | `int` | `64` | Number of concurrent aria2 downloads. Values below 1 are usage errors (exit `2`). |
 | `--progress-bar` | `bool` | `False` | Show interactive tqdm progress bar on stderr. By default no interactive progress is shown; sampled log lines at INFO level are emitted instead. See [`common.progress`](../common/progress.md). |
 
 ### archive-home resolution
@@ -290,6 +291,11 @@ In download mode, the following are printed to stderr:
 - If `--progress-bar` is passed, an interactive tqdm bar is rendered on stderr
   during both the listing and download phases. Otherwise, sampled INFO log lines
   report progress.
+
+Download progress updates after each aria2 batch of at most 512 files, including
+retry rounds. With `-v`, each download progress event produces an INFO line;
+`--progress-bar` advances the bar at the same cadence. Listing progress retains
+its proportional sampling.
 
 ### Exit codes
 

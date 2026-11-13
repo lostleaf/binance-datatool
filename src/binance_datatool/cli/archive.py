@@ -344,6 +344,10 @@ def download_command(
             help="Allow aria2c to inherit system proxy environment variables.",
         ),
     ] = False,
+    concurrency: Annotated[
+        int,
+        typer.Option("--concurrency", min=1, help="Number of concurrent aria2 downloads."),
+    ] = 64,
     progress_bar: Annotated[
         bool,
         typer.Option(
@@ -371,6 +375,7 @@ def download_command(
         interval=interval,
         dry_run=dry_run,
         inherit_aria2_proxy=aria2_proxy,
+        concurrency=concurrency,
         progress_bar=progress_bar,
     )
     result = asyncio.run(workflow.run())
