@@ -22,12 +22,16 @@ binance-datatool list-symbols <TRADE_TYPE>
 | `--exclude-stables` | `bool` | `False` | Exclude stablecoin pairs. Ignored for COIN-M. |
 | `--contract-type` | `ContractType` | `None` | Restrict futures symbols to `perpetual` or `delivery`. Ignored for spot. |
 
-Flags that do not apply to the chosen market are silently ignored. When every filter flag is
-at its default, no filter is constructed and the workflow runs in unfiltered mode.
+Flags that do not apply to the chosen market are ignored when filtering inferred metadata.
+When every filter flag is at its default, no filter is constructed and the command runs in
+unfiltered mode. `--freq` and `--type` select the archive prefix and do not enable filtering.
 
-**Output:** one matched symbol per line to stdout. The CLI only prints
-`ListSymbolsResult.matched`; raw symbols that failed inference and symbols that were
-filtered out are not printed, regardless of whether any filter flag was passed.
+**Output:** one symbol per line to stdout. Without filter flags, every symbol directory is
+printed in the archive's sorted listing order, including symbols whose metadata cannot be
+inferred. With any filter flag, only `ListSymbolsResult.matched` is printed; uninferable
+symbols are skipped and one warning on stderr gives their count and names, visible without
+`-v`. This also applies when the supplied filter flag is ignored for the selected market.
+No warning is emitted when every symbol is inferable. Both modes exit `0` on success.
 
 **Examples:**
 
@@ -46,7 +50,8 @@ User runs:
   ┌──────────────────────────────────────────────────────┐
   │ CLI layer  (cli/archive.py)                     │
   │  Parses arguments, builds a typed symbol filter,     │
-  │  runs the workflow, and prints matched symbols.      │
+  │  runs the workflow, prints raw or matched symbols,   │
+  │  and warns about uninferable symbols when filtering. │
   └──────────────────────┬───────────────────────────────┘
                          │ trade_type, data_freq, data_type,
                          │ symbol_filter

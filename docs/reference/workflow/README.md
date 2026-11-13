@@ -38,7 +38,8 @@ result: ListSymbolsResult = await workflow.run()
 async def run(self) -> ListSymbolsResult
 ```
 
-1. Calls `client.list_symbols()` for the configured market.
+1. Calls `client.list_symbols()` for the configured market and retains the returned order
+   in `raw_symbols`.
 2. Dispatches each raw symbol through `infer_spot_info` / `infer_um_info` / `infer_cm_info`
    according to `trade_type`.
 3. Splits the results into `inferred` and `unmatched` (raw strings that failed inference).
@@ -56,8 +57,10 @@ shared type.
 | `matched` | `list[SymbolInfo]` | Inferred symbols that passed the filter (or all inferred symbols when no filter is set). |
 | `unmatched` | `list[str]` | Raw symbols that could not be parsed by the per-market inference function. |
 | `filtered_out` | `list[SymbolInfo]` | Inferred symbols rejected by the filter. Always empty when no filter is set. |
+| `raw_symbols` | `list[str]` | Every symbol returned by the archive in listing order, including uninferable and filtered-out symbols. Defaults to an empty list when constructing results manually. |
 
-Input order is preserved across all three buckets.
+Input order is preserved within each bucket. `raw_symbols` preserves the full interleaving
+across buckets so unfiltered CLI output can print every directory in archive order.
 
 ## `ArchiveListFilesWorkflow`
 

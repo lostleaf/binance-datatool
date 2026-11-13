@@ -106,7 +106,13 @@ binance-datatool -v list-symbols <TRADE_TYPE> [OPTIONS]
 | `--exclude-stables`  | Exclude stablecoin pairs                             |
 | `--contract-type`    | Filter futures by contract type                      |
 
-Output: one symbol per line to stdout.
+Output: one symbol per line to stdout. With no filter flags, every archive symbol directory
+is printed in listing order, including symbols whose metadata cannot be inferred. `--freq`
+and `--type` select the archive prefix and do not enable filtering.
+
+With any filter flag, uninferable symbols are skipped and one stderr warning gives their
+count and names, even without `-v`. This applies even if the flag is ignored for the selected
+market. No warning is emitted when every symbol is inferable. Both modes exit `0` on success.
 
 ### list-files
 

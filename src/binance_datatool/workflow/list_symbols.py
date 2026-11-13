@@ -67,7 +67,7 @@ class ArchiveListSymbolsWorkflow:
         """Execute the workflow and return structured symbol results.
 
         Returns:
-            Inferred symbols split into matched, inference-failed, and filtered-out buckets.
+            Raw symbols in archive order plus matched, inference-failed, and filtered-out buckets.
         """
         quote_assets, exclude_leverage, exclude_stable_pairs, contract_type = _format_filter_values(
             self.symbol_filter
@@ -97,7 +97,9 @@ class ArchiveListSymbolsWorkflow:
             inferred.append(info)
 
         if self.symbol_filter is None:
-            result = ListSymbolsResult(matched=inferred, unmatched=unmatched, filtered_out=[])
+            result = ListSymbolsResult(
+                matched=inferred, unmatched=unmatched, filtered_out=[], raw_symbols=raw_symbols
+            )
         else:
             matched = []
             filtered_out = []
@@ -111,6 +113,7 @@ class ArchiveListSymbolsWorkflow:
                 matched=matched,
                 unmatched=unmatched,
                 filtered_out=filtered_out,
+                raw_symbols=raw_symbols,
             )
 
         logger.info(

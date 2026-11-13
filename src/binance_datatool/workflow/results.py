@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 from binance_datatool.common import S3_DOWNLOAD_PREFIX
@@ -21,6 +21,7 @@ class ListSymbolsResult:
     matched: list[SymbolInfo]
     unmatched: list[str]
     filtered_out: list[SymbolInfo]
+    raw_symbols: list[str] = field(default_factory=list)
 
     @property
     def matched_symbols(self) -> int:

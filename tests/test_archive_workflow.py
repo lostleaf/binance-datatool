@@ -67,15 +67,17 @@ async def test_archive_list_symbols_workflow_returns_inferred_and_unmatched_spot
         trade_type=TradeType.spot,
         data_freq=DataFrequency.daily,
         data_type=DataType.klines,
-        client=FakeArchiveClient(symbols=["BTCUSDT", "这是测试币456", "ETHUSDT"]),
+        client=FakeArchiveClient(symbols=["BTCUSDT", "BTCZZZUNKNOWN", "ETHUSDT"]),
     )
 
     result = await workflow.run()
 
     assert isinstance(result, ListSymbolsResult)
     assert [info.symbol for info in result.matched] == ["BTCUSDT", "ETHUSDT"]
-    assert result.unmatched == ["这是测试币456"]
+    assert result.unmatched == ["BTCZZZUNKNOWN"]
     assert result.filtered_out == []
+    assert result.raw_symbols == ["BTCUSDT", "BTCZZZUNKNOWN", "ETHUSDT"]
+    assert result.total_raw_symbols == 3
 
 
 @pytest.mark.asyncio
@@ -90,14 +92,21 @@ async def test_archive_list_symbols_workflow_applies_spot_filter_and_preserves_o
             exclude_leverage=True,
             exclude_stable_pairs=True,
         ),
-        client=FakeArchiveClient(symbols=["ETHBTC", "BNBUPUSDT", "BTCUSDT", "USDCUSDT"]),
+        client=FakeArchiveClient(
+            symbols=["ETHBTC", "BNBUPUSDT", "BTCUSDT", "BTCZZZUNKNOWN", "USDCUSDT"]
+        ),
     )
 
     result = await workflow.run()
 
     assert [info.symbol for info in result.matched] == ["BTCUSDT"]
     assert [info.symbol for info in result.filtered_out] == ["ETHBTC", "BNBUPUSDT", "USDCUSDT"]
-    assert result.unmatched == []
+    assert result.unmatched == ["BTCZZZUNKNOWN"]
+    assert result.raw_symbols == ["ETHBTC", "BNBUPUSDT", "BTCUSDT", "BTCZZZUNKNOWN", "USDCUSDT"]
+    assert result.matched_symbols == 1
+    assert result.filtered_out_symbols == 3
+    assert result.inference_failed_symbols == 1
+    assert result.total_raw_symbols == 5
 
 
 @pytest.mark.asyncio

@@ -82,8 +82,19 @@ def list_symbols_command(
         data_type=data_type,
         symbol_filter=symbol_filter,
     )
-    for info in asyncio.run(workflow.run()).matched:
-        typer.echo(info.symbol)
+    result = asyncio.run(workflow.run())
+    if not (quotes or exclude_leverage or exclude_stables or contract_type):
+        for symbol in result.raw_symbols:
+            typer.echo(symbol)
+    else:
+        for info in result.matched:
+            typer.echo(info.symbol)
+        if result.unmatched:
+            typer.echo(
+                f"Warning: skipped {result.inference_failed_symbols} symbols whose metadata "
+                f"could not be inferred for filtering: {', '.join(result.unmatched)}",
+                err=True,
+            )
 
 
 def _resolve_symbols(symbols: list[str] | None) -> list[str]:

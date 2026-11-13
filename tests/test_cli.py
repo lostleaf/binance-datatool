@@ -13,6 +13,7 @@ from binance_datatool.archive import ArchiveFile
 from binance_datatool.cli import app
 from binance_datatool.common import (
     CmSymbolFilter,
+    CmSymbolInfo,
     ContractType,
     SpotSymbolFilter,
     SpotSymbolInfo,
@@ -77,38 +78,18 @@ def stderr_messages(monkeypatch) -> list[str]:
     return messages
 
 
-def test_cli_list_symbols_outputs_only_matched_symbols(monkeypatch) -> None:
-    """The CLI should print only matched symbol names."""
+def test_cli_list_symbols_outputs_all_raw_symbols_without_filters(monkeypatch) -> None:
+    """Unfiltered output should retain unknown symbols in archive listing order."""
 
     async def fake_run(self) -> ListSymbolsResult:
-        assert self.symbol_filter is None
         return ListSymbolsResult(
             matched=[
-                SpotSymbolInfo(
-                    symbol="BTCUSDT",
-                    base_asset="BTC",
-                    quote_asset="USDT",
-                    is_leverage=False,
-                    is_stable_pair=False,
-                ),
-                SpotSymbolInfo(
-                    symbol="ETHUSDT",
-                    base_asset="ETH",
-                    quote_asset="USDT",
-                    is_leverage=False,
-                    is_stable_pair=False,
-                ),
+                SpotSymbolInfo(symbol, base, "USDT", False, False)
+                for symbol, base in [("BTCUSDT", "BTC"), ("ETHUSDT", "ETH")]
             ],
-            unmatched=["RAWBAD"],
-            filtered_out=[
-                SpotSymbolInfo(
-                    symbol="BNBUPUSDT",
-                    base_asset="BNBUP",
-                    quote_asset="USDT",
-                    is_leverage=True,
-                    is_stable_pair=False,
-                )
-            ],
+            unmatched=["BTCZZZUNKNOWN"],
+            filtered_out=[],
+            raw_symbols=["BTCUSDT", "BTCZZZUNKNOWN", "ETHUSDT"],
         )
 
     monkeypatch.setattr(
@@ -119,7 +100,85 @@ def test_cli_list_symbols_outputs_only_matched_symbols(monkeypatch) -> None:
     result = runner.invoke(app, ["list-symbols", "spot"])
 
     assert result.exit_code == 0
+    assert result.stdout == "BTCUSDT\nBTCZZZUNKNOWN\nETHUSDT\n"
+    assert result.stderr == ""
+
+
+@pytest.mark.parametrize("flags", [[], ["--quote", "USDT"]])
+def test_cli_list_symbols_does_not_warn_when_all_symbols_are_inferable(
+    monkeypatch, flags: list[str]
+) -> None:
+    """Successful inference should keep stderr empty in both listing modes."""
+
+    async def fake_run(self) -> ListSymbolsResult:
+        return ListSymbolsResult(
+            matched=[
+                SpotSymbolInfo(symbol, base, "USDT", False, False)
+                for symbol, base in [("BTCUSDT", "BTC"), ("ETHUSDT", "ETH")]
+            ],
+            unmatched=[],
+            filtered_out=[],
+            raw_symbols=["BTCUSDT", "ETHUSDT"],
+        )
+
+    monkeypatch.setattr(
+        "binance_datatool.workflow.ArchiveListSymbolsWorkflow.run",
+        fake_run,
+    )
+
+    result = runner.invoke(app, ["list-symbols", "spot", *flags])
+
+    assert result.exit_code == 0
     assert result.stdout == "BTCUSDT\nETHUSDT\n"
+    assert result.stderr == ""
+
+
+@pytest.mark.parametrize(
+    ("trade_type", "flags", "known_symbol"),
+    [
+        ("spot", ["--quote", "USDT"], "BTCUSDT"),
+        ("spot", ["--exclude-leverage"], "BTCUSDT"),
+        ("spot", ["--exclude-stables"], "BTCUSDT"),
+        ("spot", ["--contract-type", "perpetual"], "BTCUSDT"),
+        ("um", ["--contract-type", "perpetual"], "BTCUSDT"),
+        ("um", ["--exclude-leverage"], "BTCUSDT"),
+        ("cm", ["--quote", "USDT"], "BTCUSD_PERP"),
+        ("cm", ["--exclude-leverage"], "BTCUSD_PERP"),
+        ("cm", ["--exclude-stables"], "BTCUSD_PERP"),
+    ],
+)
+def test_cli_list_symbols_warns_about_unknown_symbols_with_any_filter_flag(
+    monkeypatch, stderr_messages, trade_type: str, flags: list[str], known_symbol: str
+) -> None:
+    """Filter flags should skip unknown symbols with one visible warning carrying their data."""
+
+    async def fake_run(self) -> ListSymbolsResult:
+        known_info = {
+            "spot": SpotSymbolInfo("BTCUSDT", "BTC", "USDT", False, False),
+            "um": UmSymbolInfo("BTCUSDT", "BTC", "USDT", ContractType.perpetual, False),
+            "cm": CmSymbolInfo("BTCUSD_PERP", "BTC", "USD", ContractType.perpetual),
+        }[trade_type]
+        return ListSymbolsResult(
+            matched=[known_info],
+            unmatched=["BTCZZZUNKNOWN", "ETHZZZUNKNOWN"],
+            filtered_out=[],
+            raw_symbols=[known_symbol, "BTCZZZUNKNOWN", "ETHZZZUNKNOWN"],
+        )
+
+    monkeypatch.setattr(
+        "binance_datatool.workflow.ArchiveListSymbolsWorkflow.run",
+        fake_run,
+    )
+
+    result = runner.invoke(app, ["list-symbols", trade_type, *flags])
+
+    assert result.exit_code == 0
+    assert result.stdout == f"{known_symbol}\n"
+    assert len(stderr_messages) == 1
+    assert stderr_messages[0] in result.stderr
+    assert "2" in stderr_messages[0]
+    assert "BTCZZZUNKNOWN" in stderr_messages[0]
+    assert "ETHZZZUNKNOWN" in stderr_messages[0]
 
 
 def test_cli_list_symbols_builds_um_filter_from_flags(monkeypatch) -> None:
