@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -501,9 +502,9 @@ def test_exchange_info_matches_symbol_inference() -> None:
     """exchangeInfo should agree with local symbol parsing for online markets."""
 
     binance = pytest.importorskip("binance")
-    client = binance.Client()
-
+    client = None
     try:
+        client = binance.Client()
         spot_info = client.get_exchange_info()
         for payload in spot_info["symbols"]:
             result = infer_spot_info(payload["symbol"])
@@ -526,5 +527,108 @@ def test_exchange_info_matches_symbol_inference() -> None:
             assert result.base_asset == payload["baseAsset"]
             assert result.quote_asset == payload["quoteAsset"]
             assert result.contract_type == _expected_contract_type(payload)
+    except binance.BinanceAPIException as error:
+        if error.status_code in {403, 451}:
+            pytest.skip(f"exchangeInfo access refused (HTTP {error.status_code}): {error}")
+        raise
     finally:
-        client.close_connection()
+        if client is not None:
+            client.close_connection()
+
+
+@pytest.mark.parametrize("status_code", [403, 451])
+def test_exchange_info_comparison_skips_access_refused_during_construction(
+    monkeypatch: pytest.MonkeyPatch, status_code: int
+) -> None:
+    """An endpoint refusal from the SDK's initial ping should report a skip."""
+    binance = pytest.importorskip("binance")
+    response = SimpleNamespace(text='{"code": 0, "msg": "Restricted location"}')
+    error = binance.BinanceAPIException(response, status_code, response.text)
+
+    def refused_client() -> None:
+        raise error
+
+    monkeypatch.setattr(binance, "Client", refused_client)
+
+    with pytest.raises(pytest.skip.Exception) as skipped:
+        test_exchange_info_matches_symbol_inference()
+    assert str(status_code) in str(skipped.value)
+    assert "Restricted location" in str(skipped.value)
+
+
+@pytest.mark.parametrize("status_code", [403, 451])
+@pytest.mark.parametrize(
+    "endpoint", ["get_exchange_info", "futures_exchange_info", "futures_coin_exchange_info"]
+)
+def test_exchange_info_comparison_skips_access_refused_requests_and_closes_client(
+    monkeypatch: pytest.MonkeyPatch, status_code: int, endpoint: str
+) -> None:
+    """Only the comparison should skip when any exchangeInfo endpoint refuses access."""
+    binance = pytest.importorskip("binance")
+    response = SimpleNamespace(text='{"code": 0, "msg": "Restricted location"}')
+    error = binance.BinanceAPIException(response, status_code, response.text)
+    closed = []
+    client = SimpleNamespace(
+        get_exchange_info=lambda: {"symbols": []},
+        futures_exchange_info=lambda: {"symbols": []},
+        futures_coin_exchange_info=lambda: {"symbols": []},
+        close_connection=lambda: closed.append(True),
+    )
+
+    def refused_request() -> None:
+        raise error
+
+    monkeypatch.setattr(client, endpoint, refused_request)
+    monkeypatch.setattr(binance, "Client", lambda: client)
+
+    with pytest.raises(pytest.skip.Exception) as skipped:
+        test_exchange_info_matches_symbol_inference()
+    assert str(status_code) in str(skipped.value)
+    assert "Restricted location" in str(skipped.value)
+    assert closed == [True]
+
+
+@pytest.mark.parametrize("during_construction", [True, False])
+@pytest.mark.parametrize("failure", ["server-error", "unrelated-error"])
+def test_exchange_info_comparison_preserves_other_errors(
+    monkeypatch: pytest.MonkeyPatch, during_construction: bool, failure: str
+) -> None:
+    """Server errors and unrelated failures should remain failures at either stage."""
+    binance = pytest.importorskip("binance")
+    response = SimpleNamespace(text='{"code": -1000, "msg": "Server error"}')
+    error = (
+        binance.BinanceAPIException(response, 500, response.text)
+        if failure == "server-error"
+        else RuntimeError("Unexpected failure")
+    )
+    closed = []
+
+    def fail() -> None:
+        raise error
+
+    client = SimpleNamespace(get_exchange_info=fail, close_connection=lambda: closed.append(True))
+    monkeypatch.setattr(binance, "Client", fail if during_construction else lambda: client)
+
+    with pytest.raises(type(error)) as raised:
+        test_exchange_info_matches_symbol_inference()
+    assert raised.value is error
+    assert closed == ([] if during_construction else [True])
+
+
+def test_exchange_info_comparison_preserves_inference_mismatches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid response disagreeing with inference should still fail the comparison."""
+    binance = pytest.importorskip("binance")
+    closed = []
+    client = SimpleNamespace(
+        get_exchange_info=lambda: {
+            "symbols": [{"symbol": "BTCUSDT", "baseAsset": "UNEXPECTED", "quoteAsset": "USDT"}]
+        },
+        close_connection=lambda: closed.append(True),
+    )
+    monkeypatch.setattr(binance, "Client", lambda: client)
+
+    with pytest.raises(AssertionError):
+        test_exchange_info_matches_symbol_inference()
+    assert closed == [True]
