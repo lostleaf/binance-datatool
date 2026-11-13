@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -662,10 +661,7 @@ def test_cli_download_dry_run_outputs_tsv(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert result.stdout == "new\t1048\tBTCUSDT/BTCUSDT-fundingRate-2026-03.zip\n"
-    stderr_lines = result.stderr.splitlines()
-    assert len(stderr_lines) == 1
-    actual_counts = sorted(map(int, re.findall(r"\b\d+\b", stderr_lines[0])))
-    assert actual_counts == [1, 12]
+    assert result.stderr == "1 files to download, 12 up to date\n"
 
 
 @pytest.mark.parametrize(
@@ -715,10 +711,7 @@ def test_cli_download_prints_summary(
 
     assert result.exit_code == expected_exit_code
     assert result.stdout == ""
-    stderr_lines = result.stderr.splitlines()
-    assert len(stderr_lines) == 1
-    actual_counts = sorted(map(int, re.findall(r"\b\d+\b", stderr_lines[0])))
-    assert actual_counts == sorted((downloaded, failed, skipped))
+    assert result.stderr == (f"Done: {downloaded} downloaded, {failed} failed, {skipped} skipped\n")
 
 
 def test_cli_download_passes_archive_home_and_proxy_flag(monkeypatch) -> None:
