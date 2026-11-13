@@ -34,8 +34,11 @@ client = ArchiveClient(timeout_seconds=15, trust_env=True)
 | `list_symbol_files` | `async (trade_type, data_freq, data_type, symbol, interval=None, *, session=None) -> list[ArchiveFile]` | Build the S3 prefix and list every file for one symbol. Reuses a caller-supplied session when provided; otherwise creates and closes a short-lived one internally. Raises `ValueError` when `interval` does not match `data_type.has_interval_layer`. |
 | `list_symbol_files_batch` | `async (trade_type, data_freq, data_type, symbols, interval=None, *, progress_bar=False) -> dict[str, SymbolListingResult]` | List files for multiple symbols concurrently via a shared session. Returns an ordered mapping from each symbol to `(files, error)`. |
 
-`list_dir()` and `list_files_in_dir()` are the low-level pagination primitives.
-The higher-level methods build archive prefixes for you.
+`list_dir()` and `list_files_in_dir()` share one pagination implementation.
+The higher-level methods build archive prefixes for you. Listing pages are parsed
+with the standard-library `xml.etree.ElementTree` module, accepting the S3 XML
+namespace and unqualified XML. Empty pages return empty lists; single and repeated
+entries preserve response order before `list_symbols()` sorts the symbol names.
 
 ## `ArchiveFile`
 

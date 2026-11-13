@@ -14,7 +14,7 @@ GET https://s3-ap-northeast-1.amazonaws.com/data.binance.vision
 **Directory listing (simplified):**
 
 ```xml
-<ListBucketResult>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
   <IsTruncated>false</IsTruncated>
   <NextMarker>...</NextMarker>
   <CommonPrefixes>
@@ -29,7 +29,7 @@ GET https://s3-ap-northeast-1.amazonaws.com/data.binance.vision
 **File listing (simplified):**
 
 ```xml
-<ListBucketResult>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
   <IsTruncated>false</IsTruncated>
   <Contents>
     <Key>data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-03.zip</Key>
@@ -48,10 +48,14 @@ GET https://s3-ap-northeast-1.amazonaws.com/data.binance.vision
 
 | Behavior | Detail |
 |-----------|--------|
-| **Pagination** | S3 returns at most 1000 entries per page. When `IsTruncated` is `"true"`, the client uses `NextMarker`, or falls back to the last emitted prefix (directory listing) or the last emitted key (file listing) to fetch the next page. |
-| **xmltodict normalization** | When only one `CommonPrefixes` or `Contents` element exists, `xmltodict` returns a `dict` instead of a `list`. The `_normalize_entries()` helper handles both shapes. |
+| **Pagination** | Directory and file listings share one pagination loop. S3 returns at most 1000 entries per page. When `IsTruncated` is `"true"`, the client uses `NextMarker`, or falls back to the last child prefix (directory listing) or object key (file listing). Directory pages without child prefixes also fall back to the last object key. A truncated page without any marker source ends the listing. |
+| **XML parsing** | Standard-library `xml.etree.ElementTree` parses namespaced and unqualified XML. Absent, single, and repeated `CommonPrefixes` or `Contents` elements produce lists consistently. Field text retains whitespace normalization; XML without a `ListBucketResult` root is rejected. |
 | **Retry with backoff** | HTTP requests use `tenacity` with exponential backoff (up to 5 attempts), retrying only on `aiohttp.ClientError` and `asyncio.TimeoutError`. |
 | **Timestamp parsing** | `Contents.LastModified` strings are parsed via `datetime.fromisoformat` (with a `Z` → `+00:00` substitution) so every `ArchiveFile.last_modified` is tz-aware in UTC. |
+
+The [listing parser benchmark](../../../benchmarks/README.md#xml-listing-parser)
+compares complete file-record conversion against the original parser on the same
+1,000-entry page.
 
 ## Proxy Support
 

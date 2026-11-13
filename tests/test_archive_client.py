@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
+from urllib.parse import parse_qs, urlsplit
 
 import aiohttp
 import pytest
@@ -12,7 +13,6 @@ import pytest
 from binance_datatool.archive.client import (
     ArchiveClient,
     ArchiveFile,
-    _extract_files_from_payload,
 )
 from binance_datatool.common import S3_HTTP_TIMEOUT_SECONDS, DataFrequency, DataType, TradeType
 
@@ -20,44 +20,119 @@ if TYPE_CHECKING:
     from binance_datatool.archive.client import SymbolListingResult
 
 
+XmlResponses: TypeAlias = tuple[list[str], list[dict[str, list[str]]]]
+
+
+@pytest.fixture
+def xml_responses(monkeypatch: pytest.MonkeyPatch) -> XmlResponses:
+    """Serve XML pages at the HTTP boundary and record their request queries."""
+    pages: list[str] = []
+    queries: list[dict[str, list[str]]] = []
+
+    class Response:
+        async def __aenter__(self) -> Response:
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def raise_for_status(self) -> None:
+            return None
+
+        async def text(self) -> str:
+            return pages.pop(0)
+
+    def get(session: aiohttp.ClientSession, url: str) -> Response:
+        queries.append(parse_qs(urlsplit(url).query))
+        return Response()
+
+    monkeypatch.setattr(aiohttp.ClientSession, "get", get)
+    return pages, queries
+
+
 @pytest.mark.asyncio
-async def test_archive_client_list_dir_handles_pagination_and_single_prefix(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_archive_client_list_symbols_handles_namespaced_pages(
+    xml_responses: XmlResponses,
 ) -> None:
-    """S3 pagination should aggregate prefixes, including single-item pages."""
-    responses = [
+    """Symbol listings accept namespace prefixes and follow the last child prefix."""
+    pages, queries = xml_responses
+    pages.extend(
+        [
+            '<s3:ListBucketResult xmlns:s3="http://s3.amazonaws.com/doc/2006-03-01/">'
+            "<s3:IsTruncated>true</s3:IsTruncated>"
+            "<s3:CommonPrefixes><s3:Prefix>data/spot/daily/klines/ETHUSDT/</s3:Prefix>"
+            "</s3:CommonPrefixes></s3:ListBucketResult>",
+            '<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
+            "<IsTruncated>false</IsTruncated>"
+            "<CommonPrefixes><Prefix>data/spot/daily/klines/BTCUSDT/</Prefix></CommonPrefixes>"
+            "<CommonPrefixes><Prefix>data/spot/daily/klines/BNBUSDT/</Prefix></CommonPrefixes>"
+            "</ListBucketResult>",
+        ]
+    )
+
+    symbols = await ArchiveClient().list_symbols(
+        TradeType.spot, DataFrequency.daily, DataType.klines
+    )
+
+    assert symbols == ["BNBUSDT", "BTCUSDT", "ETHUSDT"]
+    assert queries == [
+        {"delimiter": ["/"], "prefix": ["data/spot/daily/klines/"]},
         {
-            "ListBucketResult": {
-                "IsTruncated": "true",
-                "CommonPrefixes": [
-                    {"Prefix": "data/spot/daily/klines/BTCUSDT/"},
-                    {"Prefix": "data/spot/daily/klines/ETHUSDT/"},
-                ],
-            }
-        },
-        {
-            "ListBucketResult": {
-                "IsTruncated": "false",
-                "CommonPrefixes": {"Prefix": "data/spot/daily/klines/BNBUSDT/"},
-            }
+            "delimiter": ["/"],
+            "prefix": ["data/spot/daily/klines/"],
+            "marker": ["data/spot/daily/klines/ETHUSDT/"],
         },
     ]
-    client = ArchiveClient()
 
-    async def fake_fetch_xml(session: aiohttp.ClientSession, url: str) -> dict[str, Any]:
-        assert "prefix=data%2Fspot%2Fdaily%2Fklines%2F" in url
-        return responses.pop(0)
 
-    monkeypatch.setattr(client, "_fetch_xml", fake_fetch_xml)
-
-    async with aiohttp.ClientSession() as session:
-        result = await client.list_dir(session, "data/spot/daily/klines/")
-
-    assert result == [
-        "data/spot/daily/klines/BTCUSDT/",
-        "data/spot/daily/klines/ETHUSDT/",
-        "data/spot/daily/klines/BNBUSDT/",
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count", [0, 1, 3])
+async def test_archive_client_list_symbols_parses_xml(
+    xml_responses: XmlResponses,
+    count: int,
+) -> None:
+    """Symbol listings return sorted names for absent, single and many child prefixes."""
+    pages, _ = xml_responses
+    prefixes = [
+        "<CommonPrefixes><Prefix>data/spot/daily/klines/ETHUSDT/</Prefix></CommonPrefixes>",
+        "<CommonPrefixes><Prefix>data/spot/daily/klines/BTCUSDT/</Prefix></CommonPrefixes>",
+        "<CommonPrefixes><Prefix>data/spot/daily/klines/BNBUSDT/</Prefix></CommonPrefixes>",
     ]
+    pages.append("<ListBucketResult>" + "".join(prefixes[:count]) + "</ListBucketResult>")
+
+    symbols = await ArchiveClient().list_symbols(
+        TradeType.spot, DataFrequency.daily, DataType.klines
+    )
+
+    assert symbols == {0: [], 1: ["ETHUSDT"], 3: ["BNBUSDT", "BTCUSDT", "ETHUSDT"]}[count]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("explicit_marker", [False, True])
+async def test_archive_client_list_symbols_uses_explicit_or_file_marker(
+    xml_responses: XmlResponses,
+    explicit_marker: bool,
+) -> None:
+    """A directory page with only objects falls back to its last key when needed."""
+    pages, queries = xml_responses
+    marker_xml = "<NextMarker>resume</NextMarker>" if explicit_marker else ""
+    pages.extend(
+        [
+            "<ListBucketResult><IsTruncated>true</IsTruncated>"
+            + marker_xml
+            + "<Contents><Key>data/object.zip</Key></Contents></ListBucketResult>",
+            "<ListBucketResult><IsTruncated>false</IsTruncated>"
+            "<CommonPrefixes><Prefix>data/spot/daily/klines/BTCUSDT/</Prefix></CommonPrefixes>"
+            "</ListBucketResult>",
+        ]
+    )
+
+    symbols = await ArchiveClient().list_symbols(
+        TradeType.spot, DataFrequency.daily, DataType.klines
+    )
+
+    assert symbols == ["BTCUSDT"]
+    assert queries[1]["marker"] == ["resume" if explicit_marker else "data/object.zip"]
 
 
 @pytest.mark.asyncio
@@ -92,108 +167,168 @@ async def test_archive_client_list_symbols_uses_trust_env(monkeypatch: pytest.Mo
     assert captured["timeout"].total == S3_HTTP_TIMEOUT_SECONDS
 
 
-def test_extract_files_from_payload_handles_empty_contents() -> None:
-    """Missing S3 contents should produce an empty file list."""
-    payload = {"ListBucketResult": {"IsTruncated": "false"}}
-
-    assert _extract_files_from_payload(payload) == []
-
-
-def test_extract_files_from_payload_parses_single_entry() -> None:
-    """A single S3 content dict should become one ArchiveFile."""
-    payload = {
-        "ListBucketResult": {
-            "Contents": {
-                "Key": "data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-03.zip",
-                "LastModified": "2026-04-01T08:06:34.000Z",
-                "Size": "1048",
-            }
-        }
-    }
-
-    assert _extract_files_from_payload(payload) == [
-        ArchiveFile(
-            key="data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-03.zip",
-            size=1048,
-            last_modified=datetime(2026, 4, 1, 8, 6, 34, tzinfo=UTC),
-        )
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count", [0, 1, 2])
+@pytest.mark.parametrize("namespace", ["", ' xmlns="http://s3.amazonaws.com/doc/2006-03-01/"'])
+async def test_archive_client_list_symbol_files_parses_xml(
+    xml_responses: XmlResponses,
+    count: int,
+    namespace: str,
+) -> None:
+    """File listings preserve metadata and order for absent, single and many entries."""
+    pages, _ = xml_responses
+    entries = [
+        "<Contents><Key>data/BTCUSDT.zip</Key><Size>1048</Size>"
+        "<LastModified>2026-04-01T08:06:34.000Z</LastModified></Contents>",
+        "<Contents><Key>data/BTCUSDT.zip.CHECKSUM</Key><Size>105</Size>"
+        "<LastModified>2026-04-01T08:06:34.000Z</LastModified></Contents>",
     ]
+    pages.append(
+        f"<ListBucketResult{namespace}><IsTruncated>false</IsTruncated>"
+        + "".join(entries[:count])
+        + "</ListBucketResult>"
+    )
 
+    files = await ArchiveClient().list_symbol_files(
+        TradeType.um, DataFrequency.monthly, DataType.funding_rate, "BTCUSDT"
+    )
 
-def test_extract_files_from_payload_parses_multiple_entries() -> None:
-    """S3 file payloads should preserve order and parse checksum files too."""
-    payload = {
-        "ListBucketResult": {
-            "Contents": [
-                {
-                    "Key": "data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-03.zip",
-                    "LastModified": "2026-04-01T08:06:34.000Z",
-                    "Size": "1048",
-                },
-                {
-                    "Key": (
-                        "data/futures/um/monthly/fundingRate/BTCUSDT/"
-                        "BTCUSDT-fundingRate-2026-03.zip.CHECKSUM"
-                    ),
-                    "LastModified": "2026-04-01T08:06:34.000Z",
-                    "Size": "105",
-                },
-            ]
-        }
-    }
-
-    files = _extract_files_from_payload(payload)
-
-    assert [file.size for file in files] == [1048, 105]
-    assert files[0].key.endswith(".zip")
-    assert files[1].key.endswith(".zip.CHECKSUM")
-    assert all(file.last_modified.tzinfo is UTC for file in files)
+    expected = [
+        ArchiveFile("data/BTCUSDT.zip", 1048, datetime(2026, 4, 1, 8, 6, 34, tzinfo=UTC)),
+        ArchiveFile("data/BTCUSDT.zip.CHECKSUM", 105, datetime(2026, 4, 1, 8, 6, 34, tzinfo=UTC)),
+    ]
+    assert files == expected[:count]
 
 
 @pytest.mark.asyncio
-async def test_archive_client_list_files_in_dir_handles_pagination(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_archive_client_list_symbol_files_normalizes_xml_text(
+    xml_responses: XmlResponses,
 ) -> None:
-    """File listings should combine multiple S3 pages."""
-    responses = [
-        {
-            "ListBucketResult": {
-                "IsTruncated": "true",
-                "Contents": {
-                    "Key": "data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-03.zip",
-                    "LastModified": "2026-04-01T08:06:34.000Z",
-                    "Size": "1048",
-                },
-            }
-        },
-        {
-            "ListBucketResult": {
-                "IsTruncated": "false",
-                "Contents": {
-                    "Key": (
-                        "data/futures/um/monthly/fundingRate/BTCUSDT/"
-                        "BTCUSDT-fundingRate-2026-03.zip.CHECKSUM"
-                    ),
-                    "LastModified": "2026-04-01T08:06:34.000Z",
-                    "Size": "105",
-                },
-            }
-        },
-    ]
+    """Whitespace around S3 field text retains the previous parser's normalization."""
+    pages, _ = xml_responses
+    pages.append(
+        "<ListBucketResult><Contents><Key> data/file.zip </Key><Size> 1048 </Size>"
+        "<LastModified> 2026-04-01T08:06:34.000Z </LastModified>"
+        "</Contents></ListBucketResult>"
+    )
+
+    files = await ArchiveClient().list_symbol_files(
+        TradeType.um, DataFrequency.monthly, DataType.funding_rate, "BTCUSDT"
+    )
+
+    assert files == [ArchiveFile("data/file.zip", 1048, datetime(2026, 4, 1, 8, 6, 34, tzinfo=UTC))]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("explicit_marker", [False, True])
+@pytest.mark.parametrize("batch", [False, True])
+async def test_archive_client_list_symbol_files_follows_markers(
+    xml_responses: XmlResponses,
+    explicit_marker: bool,
+    batch: bool,
+) -> None:
+    """File pagination honors NextMarker and otherwise uses the final object key."""
+    pages, queries = xml_responses
+    marker_xml = "<NextMarker>resume+after&amp;key</NextMarker>" if explicit_marker else ""
+    pages.extend(
+        [
+            '<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
+            "<IsTruncated>true</IsTruncated>"
+            + marker_xml
+            + "<CommonPrefixes><Prefix>ignored/directory/</Prefix></CommonPrefixes>"
+            "<Contents><Key>data/BTCUSDT.zip</Key><Size>1048</Size>"
+            "<LastModified>2026-04-01T08:06:34.000Z</LastModified></Contents></ListBucketResult>",
+            "<ListBucketResult><IsTruncated>false</IsTruncated>"
+            "<Contents><Key>data/BTCUSDT.zip.CHECKSUM</Key><Size>105</Size>"
+            "<LastModified>2026-04-01T08:06:34.000Z</LastModified></Contents></ListBucketResult>",
+        ]
+    )
+
     client = ArchiveClient()
-
-    async def fake_fetch_xml(session: aiohttp.ClientSession, url: str) -> dict[str, Any]:
-        assert "prefix=data%2Ffutures%2Fum%2Fmonthly%2FfundingRate%2FBTCUSDT%2F" in url
-        return responses.pop(0)
-
-    monkeypatch.setattr(client, "_fetch_xml", fake_fetch_xml)
-
-    async with aiohttp.ClientSession() as session:
-        result = await client.list_files_in_dir(
-            session, "data/futures/um/monthly/fundingRate/BTCUSDT/"
+    if batch:
+        outcomes = await client.list_symbol_files_batch(
+            TradeType.um, DataFrequency.monthly, DataType.funding_rate, ["BTCUSDT"]
+        )
+        files, error = outcomes["BTCUSDT"]
+        assert error is None
+    else:
+        files = await client.list_symbol_files(
+            TradeType.um, DataFrequency.monthly, DataType.funding_rate, "BTCUSDT"
         )
 
-    assert [file.size for file in result] == [1048, 105]
+    assert [file.key for file in files] == ["data/BTCUSDT.zip", "data/BTCUSDT.zip.CHECKSUM"]
+    assert queries[1]["marker"] == ["resume+after&key" if explicit_marker else "data/BTCUSDT.zip"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("marker_xml", ["", "<NextMarker>resume</NextMarker>"])
+async def test_archive_client_list_symbols_handles_empty_truncated_pages(
+    xml_responses: XmlResponses,
+    marker_xml: str,
+) -> None:
+    """An empty truncated page continues only when S3 supplies a next marker."""
+    pages, queries = xml_responses
+    pages.append(
+        "<ListBucketResult><IsTruncated>true</IsTruncated>" + marker_xml + "</ListBucketResult>"
+    )
+    if marker_xml:
+        pages.append("<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>")
+
+    symbols = await ArchiveClient().list_symbols(
+        TradeType.spot, DataFrequency.daily, DataType.klines
+    )
+
+    assert symbols == []
+    assert len(queries) == (2 if marker_xml else 1)
+    if marker_xml:
+        assert queries[1]["marker"] == ["resume"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count", [0, 1, 2])
+async def test_archive_client_list_symbol_files_batch_parses_xml(
+    xml_responses: XmlResponses,
+    count: int,
+) -> None:
+    """Batch listings retain ordered empty, single and many-entry XML outcomes."""
+    pages, _ = xml_responses
+    entry = (
+        "<Contents><Key>data/file.zip</Key><Size>1048</Size>"
+        "<LastModified>2026-04-01T08:06:34.000Z</LastModified></Contents>"
+    )
+    # Identical pages keep concurrent request scheduling irrelevant to the fixture.
+    pages.extend(
+        [
+            '<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
+            + entry * count
+            + "</ListBucketResult>"
+        ]
+        * 2
+    )
+
+    result = await ArchiveClient().list_symbol_files_batch(
+        TradeType.um, DataFrequency.monthly, DataType.funding_rate, ["ETHUSDT", "BTCUSDT"]
+    )
+
+    expected = [
+        ArchiveFile("data/file.zip", 1048, datetime(2026, 4, 1, 8, 6, 34, tzinfo=UTC))
+    ] * count
+    assert list(result) == ["ETHUSDT", "BTCUSDT"]
+    assert result == {"ETHUSDT": (expected, None), "BTCUSDT": (expected, None)}
+
+
+@pytest.mark.asyncio
+async def test_archive_client_list_symbol_files_rejects_non_listing_xml(
+    xml_responses: XmlResponses,
+) -> None:
+    """A non-listing XML response must fail rather than look like an empty directory."""
+    pages, _ = xml_responses
+    pages.append("<Error><Code>AccessDenied</Code></Error>")
+
+    with pytest.raises(ValueError):
+        await ArchiveClient().list_symbol_files(
+            TradeType.um, DataFrequency.monthly, DataType.funding_rate, "BTCUSDT"
+        )
 
 
 @pytest.mark.asyncio

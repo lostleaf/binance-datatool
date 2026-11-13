@@ -5,11 +5,11 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, TypeAlias
 from urllib.parse import urlencode
+from xml.etree import ElementTree
 
 import aiohttp
-import xmltodict
 from loguru import logger
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
@@ -17,7 +17,7 @@ from binance_datatool.common import S3_HTTP_TIMEOUT_SECONDS, S3_LISTING_PREFIX
 from binance_datatool.common.progress import ProgressEvent, make_reporter
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import AsyncIterator, Sequence
 
     from binance_datatool.common.enums import DataFrequency, DataType, TradeType
 
@@ -39,60 +39,64 @@ def _build_listing_url(prefix: str, marker: str | None = None) -> str:
     return f"{S3_LISTING_PREFIX}?{urlencode(query)}"
 
 
-def _normalize_entries(value: Any) -> list[dict[str, Any]]:
-    """Normalize xmltodict values that may be absent, a dict, or a list."""
-    if value is None:
-        return []
-    if isinstance(value, list):
-        return value
-    if isinstance(value, dict):
-        return [value]
-    msg = f"Unexpected S3 XML entry payload type: {type(value)!r}"
-    raise TypeError(msg)
+def _namespace(root: ElementTree.Element) -> str:
+    """Return the expanded namespace prefix, or empty text for unqualified XML."""
+    return root.tag.rpartition("}")[0] + "}" if root.tag.startswith("{") else ""
 
 
-def _extract_prefixes_from_payload(payload: dict[str, Any]) -> list[str]:
-    """Extract child prefixes from an S3 listing response payload."""
-    result = payload["ListBucketResult"]
-    prefixes = _normalize_entries(result.get("CommonPrefixes"))
-    return [entry["Prefix"] for entry in prefixes]
+def _required_text(element: ElementTree.Element, tag: str) -> str:
+    """Read a required S3 field with the previous parser's whitespace handling."""
+    text = element.findtext(tag)
+    if text is None:
+        msg = f"Missing S3 XML field: {tag}"
+        raise ValueError(msg)
+    return text.strip()
 
 
-def _extract_files_from_payload(payload: dict[str, Any]) -> list[ArchiveFile]:
-    """Extract file metadata entries from an S3 listing response payload."""
-    result = payload["ListBucketResult"]
-    contents = _normalize_entries(result.get("Contents"))
+def _extract_prefixes(root: ElementTree.Element) -> list[str]:
+    """Extract child prefixes from an S3 listing page."""
+    namespace = _namespace(root)
     return [
-        ArchiveFile(
-            key=entry["Key"],
-            size=int(entry["Size"]),
-            last_modified=datetime.fromisoformat(entry["LastModified"].replace("Z", "+00:00")),
-        )
-        for entry in contents
+        _required_text(entry, f"{namespace}Prefix")
+        for entry in root.findall(f"{namespace}CommonPrefixes")
     ]
 
 
-def _is_truncated(payload: dict[str, Any]) -> bool:
+def _extract_files(root: ElementTree.Element) -> list[ArchiveFile]:
+    """Extract file metadata from an S3 listing page."""
+    namespace = _namespace(root)
+    key_tag = f"{namespace}Key"
+    size_tag = f"{namespace}Size"
+    modified_tag = f"{namespace}LastModified"
+    return [
+        ArchiveFile(
+            key=_required_text(entry, key_tag),
+            size=int(_required_text(entry, size_tag)),
+            last_modified=datetime.fromisoformat(
+                _required_text(entry, modified_tag).replace("Z", "+00:00")
+            ),
+        )
+        for entry in root.findall(f"{namespace}Contents")
+    ]
+
+
+def _is_truncated(root: ElementTree.Element) -> bool:
     """Return whether the S3 listing response is truncated."""
-    result = payload["ListBucketResult"]
-    return result.get("IsTruncated", "false").lower() == "true"
+    return root.findtext(f"{_namespace(root)}IsTruncated", "false").strip().lower() == "true"
 
 
-def _next_marker(payload: dict[str, Any], prefixes: Iterable[str]) -> str | None:
-    """Return the marker to use for the next S3 listing page."""
-    result = payload["ListBucketResult"]
-    marker = result.get("NextMarker")
-    if marker:
-        return marker
-
-    prefix_list = list(prefixes)
-    if prefix_list:
-        return prefix_list[-1]
-
-    contents = _normalize_entries(result.get("Contents"))
-    if contents:
-        return contents[-1]["Key"]
-    return None
+def _next_marker(root: ElementTree.Element, *, file_listing: bool) -> str | None:
+    """Return the explicit next marker or the last emitted prefix or key."""
+    namespace = _namespace(root)
+    marker = root.findtext(f"{namespace}NextMarker")
+    if marker and marker.strip():
+        return marker.strip()
+    if not file_listing:
+        prefixes = root.findall(f"{namespace}CommonPrefixes")
+        if prefixes:
+            return _required_text(prefixes[-1], f"{namespace}Prefix")
+    contents = root.findall(f"{namespace}Contents")
+    return _required_text(contents[-1], f"{namespace}Key") if contents else None
 
 
 def _extract_symbol(prefix: str) -> str:
@@ -142,7 +146,7 @@ class ArchiveClient:
         timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
         return aiohttp.ClientSession(timeout=timeout, trust_env=self.trust_env)
 
-    async def _fetch_xml(self, session: aiohttp.ClientSession, url: str) -> dict[str, Any]:
+    async def _fetch_xml(self, session: aiohttp.ClientSession, url: str) -> ElementTree.Element:
         """Fetch and parse a single S3 XML listing page."""
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(5),
@@ -154,10 +158,33 @@ class ArchiveClient:
                 async with session.get(url) as response:
                     response.raise_for_status()
                     text = await response.text()
-                return xmltodict.parse(text)
+                root = ElementTree.fromstring(text)
+                if root.tag != f"{_namespace(root)}ListBucketResult":
+                    msg = f"Unexpected S3 XML root: {root.tag}"
+                    raise ValueError(msg)
+                return root
 
         msg = "unreachable"
         raise RuntimeError(msg)
+
+    async def _iter_listing_pages(
+        self,
+        session: aiohttp.ClientSession,
+        prefix: str,
+        *,
+        file_listing: bool,
+    ) -> AsyncIterator[ElementTree.Element]:
+        """Yield pages using the marker fallback appropriate to the requested listing."""
+        marker: str | None = None
+        while True:
+            logger.debug("fetching listing page for prefix={} marker={}", prefix, marker)
+            root = await self._fetch_xml(session, _build_listing_url(prefix, marker))
+            yield root
+            if not _is_truncated(root):
+                break
+            marker = _next_marker(root, file_listing=file_listing)
+            if marker is None:
+                break
 
     async def list_dir(self, session: aiohttp.ClientSession, prefix: str) -> list[str]:
         """List all child prefixes under an S3 directory prefix.
@@ -174,20 +201,8 @@ class ArchiveClient:
             Full S3 prefix strings for each child directory.
         """
         prefixes: list[str] = []
-        marker: str | None = None
-
-        while True:
-            logger.debug("fetching directory listing page for prefix={} marker={}", prefix, marker)
-            payload = await self._fetch_xml(session, _build_listing_url(prefix, marker))
-            page_prefixes = _extract_prefixes_from_payload(payload)
-            prefixes.extend(page_prefixes)
-
-            if not _is_truncated(payload):
-                break
-
-            marker = _next_marker(payload, page_prefixes)
-            if marker is None:
-                break
+        async for root in self._iter_listing_pages(session, prefix, file_listing=False):
+            prefixes.extend(_extract_prefixes(root))
 
         return prefixes
 
@@ -211,20 +226,8 @@ class ArchiveClient:
             the prefix.
         """
         files: list[ArchiveFile] = []
-        marker: str | None = None
-
-        while True:
-            logger.debug("fetching file listing page for prefix={} marker={}", prefix, marker)
-            payload = await self._fetch_xml(session, _build_listing_url(prefix, marker))
-            page_files = _extract_files_from_payload(payload)
-            files.extend(page_files)
-
-            if not _is_truncated(payload):
-                break
-
-            marker = _next_marker(payload, [file.key for file in page_files])
-            if marker is None:
-                break
+        async for root in self._iter_listing_pages(session, prefix, file_listing=True):
+            files.extend(_extract_files(root))
 
         return files
 

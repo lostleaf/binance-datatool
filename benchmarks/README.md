@@ -1,4 +1,6 @@
-# Scan benchmark
+# Benchmarks
+
+## Directory scans
 
 Run from the repository root with the project's environment:
 
@@ -27,7 +29,7 @@ scans five separate symbol directories, sharing the same total fresh pair count,
 serially and with five threads; executor construction is included in each threaded
 measurement. No hashing or marker writes occur during timed scans.
 
-## Recorded result
+### Recorded result
 
 Measured on 2026-11-13 with Python 3.13.18, Linux 7.0.0-30-generic x86_64,
 glibc 2.39, AMD Ryzen 9 9950X (32 reported CPUs), and an ext4 filesystem on
@@ -45,3 +47,42 @@ All classifications were equal, including the missing-directory case.
 The single-directory median improved by **4.51 times**. Serial scanning was faster
 than threading in this environment, so the workflow scans serially. These are
 controlled warm-cache measurements, not a guarantee for every filesystem or machine.
+
+## XML listing parser
+
+Run from the repository root:
+
+```bash
+uv run --with xmltodict==1.0.4 python benchmarks/xml_listing.py
+```
+
+The extra dependency is isolated to this benchmark invocation. The script loads
+the original client from pinned revision `4d8830b87ac00a9e4b33ce4d39ef9761bb448863`
+through Git and compares its complete XML-to-file-record conversion with the
+current worktree's implementation. `--baseline` selects another revision that
+still exposes the original parser. The printed current source path identifies
+the package being measured.
+
+Both parsers receive the same synthetic S3 page: 1,000 `Contents` elements,
+222,117 bytes, the standard S3 namespace, object keys, sizes, UTC modification
+timestamps, ETags, and storage classes. All ordered `(key, size, last_modified)`
+records must match before timing. Network requests are excluded.
+
+Each parser receives one warmup, then seven repetitions of 30 complete page
+conversions. `--repeats` and `--iterations` change those counts. The result is the
+median time per page; this is a manual benchmark, separate from unit-test timing.
+
+### Recorded result
+
+Measured on 2026-11-13 with Python 3.13.18, Linux 7.0.0-30-generic x86_64,
+glibc 2.39, and 32 reported CPUs. The isolated comparison dependency was
+`xmltodict==1.0.4`. All 1,000 output records were equal.
+
+| Parser | Median per page (ms) |
+|--------|----------------------|
+| Original XML parsing and file-record conversion | 8.654 |
+| Standard-library ElementTree and file-record conversion | 2.193 |
+
+The median improved by **3.95 times**, exceeding the issue's three-times target
+on this environment. This controlled parser measurement does not remeasure the
+historical full-archive listing runs or guarantee a speedup on every machine.
