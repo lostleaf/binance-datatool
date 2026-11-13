@@ -1039,8 +1039,11 @@ def test_cli_verify_dry_run_outputs_paths_and_summary(monkeypatch) -> None:
     assert result.stderr.strip()
 
 
-def test_cli_verify_returns_zero_with_failures_or_orphans(monkeypatch, stderr_messages) -> None:
-    """Verify failures and orphan cleanup should still exit successfully."""
+@pytest.mark.parametrize("keep_failed", [False, True])
+def test_cli_verify_returns_two_with_failures(
+    monkeypatch, stderr_messages, keep_failed: bool
+) -> None:
+    """Verify failures exit two regardless of failed-file retention."""
 
     def fake_run(self) -> VerifyResult:
         return VerifyResult(
@@ -1065,16 +1068,43 @@ def test_cli_verify_returns_zero_with_failures_or_orphans(monkeypatch, stderr_me
             "um",
             "--type",
             "fundingRate",
+            *(["--keep-failed"] if keep_failed else []),
             "BTCUSDT",
         ],
     )
 
-    assert result.exit_code == 0
+    assert result.exit_code == 2
     assert result.stdout == ""
     assert "file.zip" in result.stderr
     assert "verify-failure-sentinel-37" in result.stderr
-    assert len(stderr_messages) == 2
+    assert len(stderr_messages) == (3 if keep_failed else 2)
     assert all(message.strip() for message in stderr_messages)
+
+
+@pytest.mark.parametrize("verified", [0, 1])
+@pytest.mark.parametrize("orphans", [0, 1])
+def test_cli_verify_returns_zero_without_failures(monkeypatch, verified: int, orphans: int) -> None:
+    """Passing, empty, and orphan-only results all exit successfully."""
+
+    def fake_run(self) -> VerifyResult:
+        return VerifyResult(
+            skipped=0,
+            verified=verified,
+            orphan_zips=orphans,
+            orphan_checksums=orphans,
+            failed_details={},
+        )
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveVerifyWorkflow.run", fake_run)
+
+    result = runner.invoke(
+        app,
+        ["--archive-home", "/tmp/archive-home", "verify", "um", "--type", "fundingRate", "BTCUSDT"],
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == ""
+    assert result.stderr.strip()
 
 
 @pytest.mark.parametrize("skipped", [0, 1])

@@ -39,8 +39,10 @@ expected = read_expected_checksum(zip_path)
 ```
 
 Reads the first whitespace-delimited token from the sibling `.CHECKSUM` file
-(`{zip_path}.CHECKSUM`). Raises `FileNotFoundError` when the checksum file does
-not exist and `ValueError` when the file is empty or has no parseable token.
+(`{zip_path}.CHECKSUM`). The token must contain exactly 64 hexadecimal characters.
+Raises `FileNotFoundError` when the checksum file does not exist and `ValueError`
+identifying the invalid checksum file when its contents are empty, contain an
+invalid SHA256 token, or cannot be decoded as UTF-8.
 
 ## `verify_single_file()`
 

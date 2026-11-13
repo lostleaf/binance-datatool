@@ -167,7 +167,14 @@ binance-datatool -v verify <TRADE_TYPE> [SYMBOLS...] [OPTIONS]
 | `-n` / `--dry-run`| Scan without verifying                                 |
 | `--progress-bar`  | Show progress bar on stderr                            |
 
-Exit codes: 0 = all passed, 2 = verification failures.
+| Situation | Exit code |
+|-----------|-----------|
+| No verification failures (including empty scans, orphan cleanup alone, or a completed dry-run) | `0` |
+| At least one ZIP failed verification, with or without `--keep-failed` | `2` |
+| Missing archive home or invalid arguments | `2` |
+
+Failure details identify malformed `.CHECKSUM` files as invalid. Inspect or replace the
+checksum file before retrying verification.
 
 ## Workflow Templates
 

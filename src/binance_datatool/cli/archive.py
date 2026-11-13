@@ -484,3 +484,5 @@ def verify_command(
         typer.echo("Failed files were kept because --keep-failed is enabled.", err=True)
 
     _warn_if_empty_local_scan(total_zips=result.total_zips)
+    if result.failed > 0:
+        raise typer.Exit(code=2)

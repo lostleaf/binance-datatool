@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from binance_datatool.archive import calc_sha256, read_expected_checksum, verify_single_file
 
 
@@ -54,3 +56,22 @@ def test_verify_single_file_fails(tmp_path) -> None:
     assert result.detail
     assert zip_path.exists()
     assert zip_path.with_suffix(".zip.CHECKSUM").exists()
+
+
+@pytest.mark.parametrize(
+    "content",
+    [b"", b" \n\t", b"not-a-checksum file.zip", b"abc file.zip", b"g" * 64, b"\xff"],
+)
+def test_verify_single_file_reports_invalid_checksum(tmp_path, content: bytes) -> None:
+    """Malformed checksum contents identify the invalid checksum file."""
+    zip_path = tmp_path / "file.zip"
+    zip_path.write_bytes(b"archive payload")
+    checksum_path = tmp_path / "file.zip.CHECKSUM"
+    checksum_path.write_bytes(content)
+
+    result = verify_single_file(zip_path)
+
+    assert result.zip_path == zip_path
+    assert result.passed is False
+    assert "invalid" in result.detail.lower()
+    assert str(checksum_path) in result.detail

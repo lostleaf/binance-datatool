@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -30,15 +31,19 @@ def read_expected_checksum(zip_path: Path) -> str:
 
     Raises:
         FileNotFoundError: When the ``.CHECKSUM`` sibling does not exist.
-        ValueError: When the checksum file is empty or has no parseable token.
+        ValueError: When the checksum file has no valid SHA256 token.
     """
     checksum_path = zip_path.parent / f"{zip_path.name}.CHECKSUM"
-    line = checksum_path.read_text(encoding="utf-8").strip()
-    expected, *_rest = line.split()
-    if not expected:
+    try:
+        line = checksum_path.read_text(encoding="utf-8").strip()
+    except UnicodeDecodeError as exc:
+        msg = f"invalid checksum file: {checksum_path}"
+        raise ValueError(msg) from exc
+    tokens = line.split()
+    if not tokens or re.fullmatch(r"[0-9a-fA-F]{64}", tokens[0]) is None:
         msg = f"invalid checksum file: {checksum_path}"
         raise ValueError(msg)
-    return expected
+    return tokens[0]
 
 
 def verify_single_file(zip_path: Path) -> VerifyFileResult:

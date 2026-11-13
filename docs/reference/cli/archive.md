@@ -449,7 +449,8 @@ invalidation rules. Verification reads only local files; it does not fetch missi
 
 | Situation | Exit code |
 |-----------|-----------|
-| Workflow completed, including reported checksum failures or orphan cleanup | `0` |
+| No verification failures (including empty scans, orphan cleanup alone, or a completed dry-run) | `0` |
+| At least one ZIP failed verification, with or without `--keep-failed` | `2` |
 | Unhandled runtime error (e.g. process pool failure) | Propagates; not translated to exit `2` |
 | BINANCE_DATATOOL_ARCHIVE_HOME not configured | `2` |
 | Argument validation error | `2` |
@@ -482,7 +483,8 @@ User runs:
   │  Validates interval vs data_type; resolves symbols   │
   │  from args or stdin; resolves archive home; constructs  │
   │  the verify workflow; prints dry-run paths or verify │
-  │  summary; logs per-file failures to stderr.          │
+  │  summary; logs per-file failures to stderr and      │
+  │  exits 2 when any ZIP fails verification.            │
   └──────────────────────┬───────────────────────────────┘
                          │ trade_type, data_freq, data_type,
                          │ symbols, archive_home, interval,
