@@ -6,8 +6,8 @@ when the symbol cannot be parsed.
 
 Parsing strategy:
 
-1. Strip the optional ``_SETTLED[N]`` / ``SETTLED[N]`` suffix that marks
-   delisted or gap-split symbols.  The suffix is removed before any
+1. Strip all trailing ``_SETTLED[N]`` / ``SETTLED[N]`` suffixes that mark
+   delisted or gap-split symbols.  These suffixes are removed before any
    further matching so that ``ICPUSDT_SETTLED`` is treated identically
    to ``ICPUSDT``.
 
@@ -35,11 +35,11 @@ from binance_datatool.common.constants import (
 from binance_datatool.common.enums import ContractType
 from binance_datatool.common.types import CmSymbolInfo, SpotSymbolInfo, UmSymbolInfo
 
-_SETTLED_SUFFIX_RE = re.compile(r"_?SETTLED\d*$")
+_SETTLED_SUFFIX_RE = re.compile(r"(?:_?SETTLED\d*)+$")
 
 
 def _strip_settled_suffix(symbol: str) -> str:
-    """Strip the optional settled suffix used for delisted or split symbols."""
+    """Strip all trailing settled suffixes used for delisted or split symbols."""
 
     return _SETTLED_SUFFIX_RE.sub("", symbol)
 

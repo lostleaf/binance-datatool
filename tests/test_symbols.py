@@ -262,6 +262,16 @@ ARCHIVE_ALLOWLIST: dict[TradeType, set[str]] = {
             ),
         ),
         (
+            "LUNAUSDT_SETTLED1SETTLED2_SETTLED",
+            SpotSymbolInfo(
+                symbol="LUNAUSDT_SETTLED1SETTLED2_SETTLED",
+                base_asset="LUNA",
+                quote_asset="USDT",
+                is_leverage=False,
+                is_stable_pair=False,
+            ),
+        ),
+        (
             "LUNAUSDT_SETTLED",
             SpotSymbolInfo(
                 symbol="LUNAUSDT_SETTLED",
@@ -330,12 +340,42 @@ def test_infer_spot_info_returns_none_for_invalid_symbols(symbol: str) -> None:
             ),
         ),
         (
+            "AERGOUSDTSETTLEDSETTLED",
+            UmSymbolInfo(
+                symbol="AERGOUSDTSETTLEDSETTLED",
+                base_asset="AERGO",
+                quote_asset="USDT",
+                contract_type=ContractType.perpetual,
+                is_stable_pair=False,
+            ),
+        ),
+        (
             "AERGOUSDTSETTLED",
             UmSymbolInfo(
                 symbol="AERGOUSDTSETTLED",
                 base_asset="AERGO",
                 quote_asset="USDT",
                 contract_type=ContractType.perpetual,
+                is_stable_pair=False,
+            ),
+        ),
+        (
+            "ICPUSDT_SETTLED_SETTLED1",
+            UmSymbolInfo(
+                symbol="ICPUSDT_SETTLED_SETTLED1",
+                base_asset="ICP",
+                quote_asset="USDT",
+                contract_type=ContractType.perpetual,
+                is_stable_pair=False,
+            ),
+        ),
+        (
+            "ETHUSDT_240927_SETTLEDSETTLED",
+            UmSymbolInfo(
+                symbol="ETHUSDT_240927_SETTLEDSETTLED",
+                base_asset="ETH",
+                quote_asset="USDT",
+                contract_type=ContractType.delivery,
                 is_stable_pair=False,
             ),
         ),
@@ -386,6 +426,15 @@ def test_infer_um_info(symbol: str, expected: UmSymbolInfo) -> None:
                 base_asset="ETH",
                 quote_asset="USD",
                 contract_type=ContractType.delivery,
+            ),
+        ),
+        (
+            "BTCUSD_PERP_SETTLED2_SETTLED",
+            CmSymbolInfo(
+                symbol="BTCUSD_PERP_SETTLED2_SETTLED",
+                base_asset="BTC",
+                quote_asset="USD",
+                contract_type=ContractType.perpetual,
             ),
         ),
         (
