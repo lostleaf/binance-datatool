@@ -1098,6 +1098,47 @@ def test_cli_verify_dry_run_outputs_paths_and_summary(monkeypatch) -> None:
     assert result.stderr.strip()
 
 
+def test_cli_verify_dry_run_preserves_workflow_path_order(monkeypatch, tmp_path: Path) -> None:
+    """Dry-run stdout preserves the workflow plan's order and relative paths."""
+
+    def fake_run(self) -> VerifyDiffResult:
+        assert self.symbols == ["ETHUSDT", "MISSING", "BTCUSDT"]
+        assert self.dry_run is True
+        return VerifyDiffResult(
+            to_verify=[
+                tmp_path / f"data/spot/daily/klines/{symbol}/1m/{name}"
+                for symbol in ("ETHUSDT", "BTCUSDT")
+                for name in ("a.zip", "z.zip")
+            ],
+            skipped=0,
+            orphan_zips=[],
+            orphan_checksums=[],
+        )
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveVerifyWorkflow.run", fake_run)
+
+    result = runner.invoke(
+        app,
+        [
+            "--archive-home",
+            str(tmp_path),
+            "verify",
+            "spot",
+            "--dry-run",
+            "--interval",
+            "1m",
+            "ETHUSDT",
+            "MISSING",
+            "BTCUSDT",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == (
+        "ETHUSDT/1m/a.zip\nETHUSDT/1m/z.zip\nBTCUSDT/1m/a.zip\nBTCUSDT/1m/z.zip\n"
+    )
+
+
 @pytest.mark.parametrize("keep_failed", [False, True])
 def test_cli_verify_returns_two_with_failures(
     monkeypatch, stderr_messages, keep_failed: bool

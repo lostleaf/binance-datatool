@@ -296,11 +296,15 @@ This is a **synchronous** method (no `async`) because the verify workflow is pur
 local I/O and CPU work — no network access is needed.
 
 1. **Scan** — walks each symbol's local directory under
-   `archive_home/data/{s3_path}/{freq}/{type}/{symbol}[/{interval}]` using a
-   `ThreadPoolExecutor` (up to 16 workers), classifying each `.zip` file as pending
+   `archive_home/data/{s3_path}/{freq}/{type}/{symbol}[/{interval}]` in caller symbol
+   order, using one `os.scandir` pass per directory and directory-entry metadata
+   for freshness checks. Classifies each `.zip` file as pending
    verification, already verified (valid timestamped marker), orphan zip (missing
-   `.CHECKSUM` sibling), or orphan checksum (missing `.zip` sibling). Reports
-   progress via the shared progress-reporting framework.
+   `.CHECKSUM` sibling), or orphan checksum (missing `.zip` sibling). Each path
+   list is sorted within its symbol; missing directories contribute no work.
+   Scans run serially and report progress via the shared progress-reporting framework.
+   The [scan benchmark](../../../benchmarks/README.md) records classification checks,
+   repeated timings, and the serial-versus-threaded comparison.
 2. In **dry-run mode**, returns a `VerifyDiffResult` immediately.
 3. **Orphan cleanup** — orphan zips have their markers cleared (zip file is kept);
    orphan checksums and their markers are deleted.
@@ -329,6 +333,9 @@ clears markers even when `keep_failed=True`.
 ## `VerifyDiffResult`
 
 Returned by `ArchiveVerifyWorkflow.run()` in dry-run mode.
+
+All path lists preserve caller symbol order and sort paths within each symbol.
+The CLI prints `to_verify` paths in that same order for `verify --dry-run`.
 
 | Field / Property | Type | Description |
 |------------------|------|-------------|

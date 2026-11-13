@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -700,6 +701,65 @@ def test_verify_workflow_diff_detects_orphans(tmp_path) -> None:
     assert result.to_verify == []
     assert result.orphan_zips == [orphan_zip]
     assert result.orphan_checksums == [orphan_checksum]
+
+
+def test_verify_workflow_preserves_symbol_order_when_first_directory_is_slower(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scan results retain caller order and sort paths within each symbol."""
+    first_dir = _symbol_verify_dir(tmp_path, symbol="ETHUSDT")
+    second_dir = _symbol_verify_dir(tmp_path, symbol="BTCUSDT")
+    first_z = _write_verify_pair(first_dir, "z.zip")
+    first_a = _write_verify_pair(first_dir, "a.zip")
+    second_z = _write_verify_pair(second_dir, "z.zip")
+    second_a = _write_verify_pair(second_dir, "a.zip")
+    for directory in (first_dir, second_dir):
+        (directory / "orphan-z.zip").touch()
+        (directory / "orphan-a.zip").touch()
+        (directory / "missing-z.zip.CHECKSUM").touch()
+        (directory / "missing-a.zip.CHECKSUM").touch()
+
+    original_scandir = os.scandir
+    original_stat = os.stat
+
+    def slower_first_directory(path):
+        if Path(path) == first_dir:
+            time.sleep(0.03)
+        return original_scandir(path)
+
+    def slower_first_stat(path, *args, **kwargs):
+        if Path(path) == first_dir:
+            time.sleep(0.03)
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "scandir", slower_first_directory)
+    monkeypatch.setattr(os, "stat", slower_first_stat)
+    workflow = ArchiveVerifyWorkflow(
+        trade_type=TradeType.spot,
+        data_freq=DataFrequency.daily,
+        data_type=DataType.klines,
+        symbols=["ETHUSDT", "MISSING", "BTCUSDT"],
+        archive_home=tmp_path,
+        interval="1m",
+        dry_run=True,
+    )
+
+    result = workflow.run()
+
+    assert result.to_verify == [first_a, first_z, second_a, second_z]
+    assert result.skipped == 0
+    assert result.orphan_zips == [
+        first_dir / "orphan-a.zip",
+        first_dir / "orphan-z.zip",
+        second_dir / "orphan-a.zip",
+        second_dir / "orphan-z.zip",
+    ]
+    assert result.orphan_checksums == [
+        first_dir / "missing-a.zip.CHECKSUM",
+        first_dir / "missing-z.zip.CHECKSUM",
+        second_dir / "missing-a.zip.CHECKSUM",
+        second_dir / "missing-z.zip.CHECKSUM",
+    ]
 
 
 def test_verify_workflow_dry_run_preserves_files(tmp_path) -> None:

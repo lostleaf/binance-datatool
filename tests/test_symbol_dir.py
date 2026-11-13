@@ -277,6 +277,46 @@ def test_scan_detects_orphan_zip_and_checksum(tmp_path: Path) -> None:
     assert result.orphan_checksums == [orphan_checksum]
 
 
+@pytest.mark.parametrize(
+    ("zip_mtime", "checksum_mtime", "timestamps", "skipped"),
+    [
+        (1000.1, 1000.9, [1000], 0),
+        (1000.9, 1000.1, [1000], 0),
+        (1000.1, 1000.9, [999, 1001], 1),
+        (1000.9, 1000.1, [1001], 1),
+        (1001.0, 1001.0, [1001], 1),
+    ],
+)
+def test_scan_preserves_marker_freshness_boundary(
+    tmp_path: Path,
+    zip_mtime: float,
+    checksum_mtime: float,
+    timestamps: list[int],
+    skipped: int,
+) -> None:
+    """Scan uses the newest marker and rounds the newest source mtime upward."""
+    zip_path = _write_verify_pair(tmp_path, "sample.zip")
+    os.utime(zip_path, (zip_mtime, zip_mtime))
+    os.utime(tmp_path / "sample.zip.CHECKSUM", (checksum_mtime, checksum_mtime))
+    for timestamp in timestamps:
+        (tmp_path / f"sample.zip.{timestamp}.verified").touch()
+
+    result = SymbolArchiveDir(tmp_path).scan()
+
+    assert result.skipped == skipped
+    assert result.to_verify == ([] if skipped else [zip_path])
+
+
+def test_scan_missing_directory_returns_empty_result(tmp_path: Path) -> None:
+    """A symbol absent from local storage contributes no files or skipped work."""
+    result = SymbolArchiveDir(tmp_path / "missing").scan()
+
+    assert result.to_verify == []
+    assert result.skipped == 0
+    assert result.orphan_zips == []
+    assert result.orphan_checksums == []
+
+
 def test_collect_markers_by_zip_returns_empty_for_no_markers(tmp_path: Path) -> None:
     """Marker collection should return an empty mapping when no markers exist."""
     zip_path = _write_verify_pair(tmp_path, "a.zip")

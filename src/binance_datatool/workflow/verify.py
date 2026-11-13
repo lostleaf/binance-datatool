@@ -5,7 +5,7 @@ from __future__ import annotations
 import multiprocessing
 import os
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -27,8 +27,6 @@ if TYPE_CHECKING:
 
     from binance_datatool.archive import VerifyFileResult
     from binance_datatool.common import DataFrequency, DataType, TradeType
-
-_SCAN_WORKERS = 16
 
 
 class ArchiveVerifyWorkflow:
@@ -98,22 +96,13 @@ class ArchiveVerifyWorkflow:
         orphan_checksums: list[Path] = []
         skipped = 0
 
-        max_workers = min(len(self.symbols), _SCAN_WORKERS)
-
-        with (
-            make_reporter(
-                self.progress_bar,
-                total=len(self.symbols),
-                description="Scan",
-            ) as reporter,
-            ThreadPoolExecutor(max_workers=max_workers) as executor,
-        ):
-            futures = {
-                executor.submit(self._scan_symbol, symbol): symbol for symbol in self.symbols
-            }
-            for future in as_completed(futures):
-                symbol = futures[future]
-                result = future.result()
+        with make_reporter(
+            self.progress_bar,
+            total=len(self.symbols),
+            description="Scan",
+        ) as reporter:
+            for symbol in self.symbols:
+                result = self._scan_symbol(symbol)
                 to_verify.extend(result.to_verify)
                 orphan_zips.extend(result.orphan_zips)
                 orphan_checksums.extend(result.orphan_checksums)

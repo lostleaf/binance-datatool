@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -25,6 +26,11 @@ class SymbolScanResult:
     orphan_zips: list[Path]
     orphan_checksums: list[Path]
     skipped: int
+
+
+def _source_freshness_timestamp(zip_mtime: float, checksum_mtime: float) -> int:
+    """Round the newest source modification time up to marker precision."""
+    return math.ceil(max(zip_mtime, checksum_mtime))
 
 
 def _match_marker_to_zip(marker_name: str, zip_names: set[str]) -> str | None:
@@ -121,7 +127,7 @@ class SymbolArchiveDir:
         """Return the normalized freshness timestamp for a zip/checksum pair."""
         zip_path = self.zip_path(zip_name)
         checksum_path = self.checksum_path(zip_name)
-        return math.ceil(max(zip_path.stat().st_mtime, checksum_path.stat().st_mtime))
+        return _source_freshness_timestamp(zip_path.stat().st_mtime, checksum_path.stat().st_mtime)
 
     def is_marker_fresh(self, zip_name: str, timestamps: list[int]) -> bool:
         """Return True when any marker timestamp is fresh for this zip file."""
@@ -142,8 +148,10 @@ class SymbolArchiveDir:
         (self.path / checksum_name).unlink(missing_ok=True)
 
     def scan(self) -> SymbolScanResult:
-        """Scan the symbol directory and classify local verify work."""
-        if not self.path.exists():
+        """Classify local verify work in one directory pass, sorting each path list."""
+        try:
+            entries = os.scandir(self.path)
+        except (FileNotFoundError, NotADirectoryError):
             return SymbolScanResult(
                 to_verify=[],
                 orphan_zips=[],
@@ -151,31 +159,43 @@ class SymbolArchiveDir:
                 skipped=0,
             )
 
-        zip_paths = sorted(self.path.glob("*.zip"))
-        zip_names = {path.name for path in zip_paths}
-        checksum_names = {path.name for path in self.path.glob("*.zip.CHECKSUM")}
-        verified_names = {path.name for path in self.path.glob("*.verified")}
+        zip_entries: dict[str, os.DirEntry[str]] = {}
+        checksum_entries: dict[str, os.DirEntry[str]] = {}
+        verified_names: set[str] = set()
+        with entries:
+            for entry in entries:
+                name = entry.name
+                if name.endswith(".zip"):
+                    zip_entries[name] = entry
+                elif name.endswith(".zip.CHECKSUM"):
+                    checksum_entries[name] = entry
+                elif name.endswith(".verified"):
+                    verified_names.add(name)
 
+        zip_names = set(zip_entries)
         marker_timestamps = _parse_marker_timestamps(verified_names, zip_names)
 
         to_verify: list[Path] = []
         orphan_zips: list[Path] = []
         skipped = 0
 
-        for zip_path in zip_paths:
-            zip_name = zip_path.name
-            if f"{zip_name}.CHECKSUM" not in checksum_names:
-                orphan_zips.append(zip_path)
+        for zip_name in sorted(zip_entries):
+            checksum_entry = checksum_entries.get(f"{zip_name}.CHECKSUM")
+            if checksum_entry is None:
+                orphan_zips.append(self.path / zip_name)
                 continue
 
-            if self.is_marker_fresh(zip_name, marker_timestamps.get(zip_name, [])):
+            timestamps = marker_timestamps.get(zip_name)
+            if timestamps and max(timestamps) >= _source_freshness_timestamp(
+                zip_entries[zip_name].stat().st_mtime, checksum_entry.stat().st_mtime
+            ):
                 skipped += 1
             else:
-                to_verify.append(zip_path)
+                to_verify.append(self.path / zip_name)
 
         orphan_checksums = sorted(
             self.path / checksum_name
-            for checksum_name in checksum_names
+            for checksum_name in checksum_entries
             if checksum_name.removesuffix(".CHECKSUM") not in zip_names
         )
 

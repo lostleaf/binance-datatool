@@ -53,8 +53,10 @@ symbol_dir = create_symbol_archive_dir(
 
 ### `scan()`
 
-Walks the symbol directory and classifies every `.zip` file into one of four
-buckets:
+Reads the symbol directory once with `os.scandir`, classifying entry names and
+using directory-entry metadata for marker freshness checks. Path lists are sorted
+by filename, and a missing directory returns an empty result. Classifies local
+files into these buckets:
 
 | Bucket | Description |
 |--------|-------------|
