@@ -62,6 +62,11 @@ shared type.
 Input order is preserved within each bucket. `raw_symbols` preserves the full interleaving
 across buckets so unfiltered CLI output can print every directory in archive order.
 
+**Migration:** `result.unmatched_symbols` has been removed. Use
+`result.inference_failed_symbols` instead; it counts inference failures separately from
+`filtered_out_symbols`. The `unmatched` list field remains available. See the
+[API convenience decision](../../adr/0001-public-api-conveniences.md) for the compatibility trade-off.
+
 ## `ArchiveListFilesWorkflow`
 
 Lists archive files for one or more symbols concurrently, isolating per-symbol failures

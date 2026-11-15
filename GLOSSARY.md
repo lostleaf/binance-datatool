@@ -29,6 +29,14 @@ _Avoid_: Archive frequency.
 **Symbol**:
 The market identifier for the instrument whose historical data is archived.
 
+**Inference failure**:
+A raw archive Symbol whose metadata cannot be inferred for its TradeType.
+_Avoid_: Filtered out.
+
+**Filtered out**:
+An archive Symbol whose metadata was inferred successfully but does not satisfy the selected filters.
+_Avoid_: Inference failure.
+
 **Archive home**:
 The root of the user's local historical archive storage.
 
