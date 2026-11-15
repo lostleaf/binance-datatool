@@ -1525,7 +1525,8 @@ def test_cli_download_json_dry_run_plan(monkeypatch, tmp_path, sample_archive_fi
 
 @pytest.mark.parametrize("dry_run", [False, True])
 @pytest.mark.parametrize(
-    "scenario", ["success", "empty", "partial", "all-listings-failed", "transfer-failed"]
+    "scenario",
+    ["success", "empty", "partial", "all-listings-failed", "transfer-failed", "mixed-failures"],
 )
 def test_cli_download_json_results(monkeypatch, tmp_path, dry_run, scenario) -> None:
     """Returned results always emit one document before result-based exits."""
@@ -1534,6 +1535,8 @@ def test_cli_download_json_results(monkeypatch, tmp_path, dry_run, scenario) -> 
         if scenario in {"partial", "all-listings-failed", "mixed-failures"}
         else []
     )
+    if scenario == "all-listings-failed":
+        errors.insert(0, SymbolListingError("BTCUSDT", "all-listing-payload-39"))
     skipped = 1 if scenario in {"success", "partial"} else 0
     failed = 1 if scenario in {"transfer-failed", "mixed-failures"} and not dry_run else 0
     downloaded = 1 if scenario in {"success", "partial", "mixed-failures"} and not dry_run else 0
@@ -1580,9 +1583,10 @@ def test_cli_download_json_results(monkeypatch, tmp_path, dry_run, scenario) -> 
     summary = document["summary"]
     assert all(type(value) is int and value >= 0 for value in summary.values())
     assert summary["listing_failed_symbols"] == len(errors)
-    assert document["listing_errors"] == (
-        [{"symbol": "ETHUSDT", "error": "listing-payload-39"}] if errors else []
-    )
+    expected_errors = [{"symbol": "ETHUSDT", "error": "listing-payload-39"}] if errors else []
+    if scenario == "all-listings-failed":
+        expected_errors.insert(0, {"symbol": "BTCUSDT", "error": "all-listing-payload-39"})
+    assert document["listing_errors"] == expected_errors
     if dry_run:
         assert document == {
             "command": "download",
@@ -1612,9 +1616,9 @@ def test_cli_download_json_results(monkeypatch, tmp_path, dry_run, scenario) -> 
         }
     assert "download-log-payload-39" in result.stderr
     assert "download-progress-39" in result.stderr
-    if errors:
-        assert "ETHUSDT" in result.stderr
-        assert "listing-payload-39" in result.stderr
+    for entry in expected_errors:
+        assert entry["symbol"] in result.stderr
+        assert entry["error"] in result.stderr
 
 
 @pytest.mark.parametrize("json_output", [True, False])
