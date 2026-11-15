@@ -236,8 +236,15 @@ Returned by `ArchiveDownloadWorkflow.run()` after a real download.
 | `skipped` | `int` | Files already up to date locally. |
 | `downloaded` | `int` | Files successfully downloaded. |
 | `failed` | `int` | Files that failed after all retries. |
+| `failed_paths` | `list[Path]` | Local paths of requests still failing after all retries, in downloader result order. Defaults to an empty list, including no-work results. |
 | `listing_errors` | `list[SymbolListingError]` | Per-symbol listing failures. |
 | `listing_failed_symbols` | `int` *(property)* | Count of failed symbol listings. |
+
+Workflow results retain storage paths as supplied by Archive home; the CLI formats absolute
+paths for JSON without changing storage behavior. `failed == len(failed_paths)` for returned
+workflow results, and `total_remote == skipped + downloaded + failed`. Requests succeeding
+on retry do not appear in `failed_paths`. Listing failures remain separate and do not add
+estimated remote objects or transfer failures. JSON serialization belongs to the CLI layer.
 
 ## `SymbolListingError`
 

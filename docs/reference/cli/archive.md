@@ -3,6 +3,25 @@
 Root CLI commands for remote archive discovery and download, plus local-only SHA256 verification.
 Domain terms are defined in the [glossary](../../../GLOSSARY.md).
 
+## Structured JSON results
+
+`download` accepts `--json` in real and dry-run modes. Each returned workflow result emits
+exactly one JSON document on stdout, including empty plans, no-work runs, and partial or
+all-symbol listing failures. Logs, progress, existing summaries, and diagnostic payloads
+remain on stderr, including aria2 subprocess output. Output without `--json` is unchanged.
+
+The common envelope contains `command` (the CLI command name), `dry_run` (boolean), and
+`summary` (an object). Field names use `snake_case`; counts and byte sizes are nonnegative
+integers. Required fields remain present when zero or empty; collections use `[]`. Fields
+belonging only to another mode are omitted. Array order follows the workflow result; object
+key order and whitespace are not contracts. There is no schema version or success/status
+field. This initial format carries no long-term stability promise: future field or semantic
+changes must update this reference and the packaged agent skill with the implementation.
+
+The single-document guarantee starts when the workflow returns a result. Argument validation,
+missing configuration, and unhandled exceptions without a result retain existing behavior;
+stdout may be empty. Returned failures emit their JSON before the command exits `2`.
+
 ## `list-symbols`
 
 ```
@@ -230,7 +249,7 @@ binance-datatool [--archive-home PATH] download <TRADE_TYPE> [SYMBOLS...]
     [--freq FREQ] [--type TYPE] [--interval INTERVAL]
     [-n | --dry-run]
     [--aria2-proxy] [--concurrency N]
-    [--progress-bar]
+    [--progress-bar] [--json]
 ```
 
 Downloads new or updated archive files into the local archive data directory.
@@ -243,7 +262,8 @@ Requires `aria2c` to be available in `PATH`.
 | `--freq` | `DataFrequency` | `daily` | Partition frequency. |
 | `--type` | `DataType` | `klines` | Dataset type. |
 | `--interval` | `str \| None` | `None` | Kline interval directory. Same validation as `list-files`. |
-| `-n` / `--dry-run` | `bool` | `False` | Show what would be downloaded without writing files. Outputs TSV to stdout. |
+| `-n` / `--dry-run` | `bool` | `False` | Show what would be downloaded without writing files. Outputs TSV unless `--json` is used. |
+| `--json` | `bool` | `False` | Emit one structured result. See [shared conventions](#structured-json-results). |
 | `--aria2-proxy` | `bool` | `False` | Allow aria2c to inherit system proxy environment variables. By default, proxy env vars (`HTTP_PROXY`, `HTTPS_PROXY`, etc.) are stripped from the aria2c subprocess. |
 | `--concurrency` | `int` | `64` | Number of concurrent aria2 downloads. Values below 1 are usage errors (exit `2`). |
 | `--progress-bar` | `bool` | `False` | Show interactive tqdm progress bar on stderr. By default no interactive progress is shown; sampled log lines at INFO level are emitted instead. See [`common.progress`](../common/progress.md). |
@@ -269,7 +289,7 @@ explain size, timestamp, partial-download, and verification-marker handling.
 
 ### Dry-run output
 
-In dry-run mode (`-n`), the command prints a three-column TSV to stdout:
+Without `--json`, dry-run mode (`-n`) prints a three-column TSV to stdout:
 
 ```
 new	1048	BTCUSDT/BTCUSDT-fundingRate-2026-03.zip
@@ -278,6 +298,38 @@ updated	105	BTCUSDT/BTCUSDT-fundingRate-2026-03.zip.CHECKSUM
 
 Columns: `reason<TAB>size_bytes<TAB>relative_path`. A summary line is printed
 to stderr: `N files to download, M up to date`.
+
+### JSON output
+
+Both modes include `listing_errors`, an array of `{ "symbol": "ETHUSDT", "error": "..." }`
+records retaining the listing error text. `summary.listing_failed_symbols` equals this array's
+length and is separate from transfer failures. `total_remote` counts only successfully listed
+objects; ZIP and checksum objects count separately. Failed listings leave the inventory
+incomplete and do not contribute estimated file counts.
+
+| Mode | Required `summary` fields | Additional result field |
+|------|---------------------------|-------------------------|
+| Dry-run | `total_remote`, `skipped`, `to_download`, `listing_failed_symbols` | `to_download`: records with absolute `path`, integer byte `size`, and `reason` (`new` or `updated`). |
+| Real run | `total_remote`, `skipped`, `downloaded`, `failed`, `listing_failed_symbols` | `failed_paths`: absolute path strings for requests still failing after all retries. |
+
+Dry-run satisfies `total_remote = skipped + to_download`; `summary.to_download` equals the
+plan length. It modifies no local files and includes neither completed-download counts nor
+`failed_paths`. A real run satisfies `total_remote = skipped + downloaded + failed`;
+`summary.failed` equals the length of `failed_paths`. Requests succeeding on retry are absent
+from failures. Real runs omit `to_download`.
+
+Local paths are absolute, interpreting a relative Archive home against the invocation working
+directory. Formatting requires no file existence and does not resolve symlinks or change
+storage behavior. Plans and failures may name absent files. Downloaded and Up to date do not
+establish Verified status.
+
+```bash
+binance-datatool -v --archive-home ./archive download um --freq monthly --type fundingRate --dry-run --json BTCUSDT
+binance-datatool -v --archive-home ./archive download um --freq monthly --type fundingRate --json BTCUSDT
+```
+
+Both modes emit JSON before exit `2` for any symbol listing failure. Real runs also exit `2`
+for final transfer failures. Other returned results exit `0`, including empty results.
 
 ### Normal output
 

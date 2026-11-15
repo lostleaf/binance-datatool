@@ -23,7 +23,26 @@ into what the tool is doing (listing symbols, downloading files, verifying check
 for DEBUG-level output when troubleshooting.
 
 All log output goes to stderr. Command results (symbol lists, file paths, dry-run diffs) go to
-stdout. This separation means piping stdout is always safe.
+stdout. Use `download --json` for a single structured result, including when aria2 writes
+stdout.
+
+## JSON results
+
+`download` supports `--json` in real and dry-run modes. Parse the entire stdout as one JSON
+document after a returned result, including exit `2`; logs, progress, diagnostic payloads,
+and existing summaries remain on stderr. No-flag output is unchanged.
+
+The envelope contains `command` (CLI name), boolean `dry_run`, and object `summary`.
+Names use `snake_case`; counts and byte sizes are nonnegative integers. Required fields
+remain present at zero/empty, collections use `[]`, and fields specific to another mode
+are omitted. Array order follows existing results; whitespace and object key order are
+unspecified. There is no schema version or success/status field. This initial format has
+no long-term stability promise. Future field or semantic changes must update the CLI
+reference and this skill with the implementation.
+
+The document guarantee starts when the workflow returns a result. Argument errors, missing
+configuration, and unhandled exceptions without a result retain existing failures and may
+leave stdout empty. Treat that as no result, rather than an empty completed plan.
 
 ## Prerequisites
 
@@ -148,16 +167,44 @@ binance-datatool -v download <TRADE_TYPE> [SYMBOLS...] [OPTIONS]
 | `--type`          | Dataset type (default: `klines`)                       |
 | `--interval`      | Interval for kline-class data types                    |
 | `-n` / `--dry-run`| Preview what would be downloaded without writing files |
+| `--json`         | Emit the structured result described below             |
 | `--aria2-proxy`   | Let aria2c inherit proxy env vars                      |
 | `--concurrency N` | Concurrent aria2 downloads (default: `64`, minimum: `1`) |
 | `--progress-bar`  | Show progress bar on stderr                            |
 
-Dry-run output: TSV lines `<reason>\t<size>\t<path>` where reason is `new` or `updated`.
-Real-run output: download stats on stderr (downloaded/failed/skipped counts).
+Without `--json`, dry-run output is TSV lines `<reason>\t<size>\t<path>`, where reason is
+`new` or `updated`.
+Real runs always print download stats on stderr (downloaded/failed/skipped counts).
 With `-v` or `--progress-bar`, download progress advances after each batch of at most
 512 files, including retry rounds. Invalid concurrency exits `2`.
 
-Exit codes: 0 = success, 2 = partial failure.
+With `--json`, both modes include `listing_errors`: records with `symbol` and the original
+`error` text. `summary.listing_failed_symbols` equals its length, separately from transfer
+failures. ZIP and checksum objects count individually. `total_remote` counts only objects
+from successful listings; listing errors mean this inventory may be incomplete.
+
+| Mode | Required `summary` fields | Additional result field |
+|------|---------------------------|-------------------------|
+| Dry-run | `total_remote`, `skipped`, `to_download`, `listing_failed_symbols` | `to_download`: records with absolute `path`, integer byte `size`, and `reason` (`new` or `updated`). |
+| Real run | `total_remote`, `skipped`, `downloaded`, `failed`, `listing_failed_symbols` | `failed_paths`: absolute strings for requests still failing after every retry. |
+
+Dry-run satisfies `total_remote = skipped + to_download`, and `summary.to_download` is the
+plan length. It modifies no local files and includes no completed-download counts or
+`failed_paths`. Real runs satisfy `total_remote = skipped + downloaded + failed`, and
+`summary.failed` equals the failed-path count. Eventual retry successes are absent from
+failures. Real runs omit `to_download`.
+
+Paths use the invocation working directory for a relative Archive home, without requiring
+existence, resolving symlinks, or changing storage behavior. Downloaded and Up to date do
+not establish Verified status; paths may name files that do not exist.
+
+```bash
+binance-datatool -v --archive-home ./archive download um --freq monthly --type fundingRate --dry-run --json BTCUSDT
+binance-datatool -v --archive-home ./archive download um --freq monthly --type fundingRate --json BTCUSDT
+```
+
+Exit codes: `2` for any symbol listing failure or, in real mode, a final transfer failure;
+`0` for other returned results, including empty results. JSON is emitted before these exits.
 
 ### verify
 

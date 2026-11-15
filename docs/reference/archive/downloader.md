@@ -31,6 +31,7 @@ result = download_archive_files(
     concurrency=64,
     max_tries=3,
     progress_bar=False,
+    stdout_to_stderr=False,
 )
 ```
 
@@ -42,6 +43,7 @@ result = download_archive_files(
 | `concurrency` | `64` | Concurrent aria2 downloads (`-j`). Must be at least 1. |
 | `max_tries` | `3` | Maximum retry rounds for incomplete files. |
 | `progress_bar` | `False` | When `True`, display an interactive tqdm progress bar on stderr via the shared progress-reporting framework. When `False`, emit sampled log lines at INFO level. See [`common.progress`](../common/progress.md). |
+| `stdout_to_stderr` | `False` | When `True`, capture child stdout and forward it to stderr after each batch. The JSON CLI selects this through the existing download callable injection. The default retains inherited subprocess stdout. |
 
 Returns an `Aria2DownloadResult`. Invalid `concurrency` or `batch_size` raises `ValueError`.
 
