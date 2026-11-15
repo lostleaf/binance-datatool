@@ -502,6 +502,7 @@ def verify_command(
         typer.Option("-n", "--dry-run", help="Show what would be verified without writing files."),
     ] = False,
     progress_bar: ProgressBarOption = False,
+    json_output: JsonOutputOption = False,
 ) -> None:
     """Verify local archive zip files against sibling checksum files."""
     _validate_interval(data_type, interval)
@@ -525,16 +526,30 @@ def verify_command(
     result = workflow.run()
 
     if isinstance(result, VerifyDiffResult):
-        for zip_path in result.to_verify:
-            typer.echo(
-                _format_local_relative_path(
-                    zip_path,
-                    archive_home=archive_home,
-                    trade_type=trade_type,
-                    data_freq=data_freq,
-                    data_type=data_type,
-                )
+        if json_output:
+            emit_json(
+                "verify",
+                dry_run=True,
+                summary={
+                    "total_zips": result.total_zips,
+                    "to_verify": len(result.to_verify),
+                    "skipped": result.skipped,
+                    "orphan_zips": len(result.orphan_zips),
+                    "orphan_checksums": len(result.orphan_checksums),
+                },
+                to_verify=[absolute_path(path) for path in result.to_verify],
             )
+        else:
+            for zip_path in result.to_verify:
+                typer.echo(
+                    _format_local_relative_path(
+                        zip_path,
+                        archive_home=archive_home,
+                        trade_type=trade_type,
+                        data_freq=data_freq,
+                        data_type=data_type,
+                    )
+                )
         typer.echo(
             (
                 f"{len(result.to_verify)} to verify, {result.skipped} up to date, "
@@ -547,6 +562,24 @@ def verify_command(
         return
 
     assert isinstance(result, VerifyResult)
+    if json_output:
+        emit_json(
+            "verify",
+            dry_run=False,
+            summary={
+                "total_zips": result.total_zips,
+                "verified": result.verified,
+                "failed": result.failed,
+                "skipped": result.skipped,
+                "orphan_zips": result.orphan_zips,
+                "orphan_checksums": result.orphan_checksums,
+            },
+            failed_details=[
+                {"path": absolute_path(path), "detail": detail}
+                for path, detail in result.failed_details.items()
+            ],
+        )
+
     for path, detail in result.failed_details.items():
         logger.error("{}: {}", path.name, detail)
 

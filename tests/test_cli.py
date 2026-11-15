@@ -2262,3 +2262,344 @@ def test_cli_download_json_unhandled_error_has_no_result(monkeypatch) -> None:
     assert isinstance(result.exception, RuntimeError)
     assert str(result.exception) == "workflow-exception-payload-39"
     assert result.stdout == ""
+
+
+def test_cli_verify_json_dry_run_plan(monkeypatch, tmp_path) -> None:
+    """JSON scan plans retain path order and orphan counts with a relative Archive home."""
+    monkeypatch.chdir(tmp_path)
+
+    def fake_run(self) -> VerifyDiffResult:
+        assert self.archive_home == Path("relative-home")
+        assert self.dry_run is True
+        return VerifyDiffResult(
+            to_verify=[Path("relative-home/z.zip"), Path("relative-home/a.zip")],
+            skipped=3,
+            orphan_zips=[Path("relative-home/orphan.zip")],
+            orphan_checksums=[Path("relative-home/missing.zip.CHECKSUM")],
+        )
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveVerifyWorkflow.run", fake_run)
+    result = runner.invoke(
+        app,
+        [
+            "--archive-home",
+            "relative-home",
+            "verify",
+            "um",
+            "--type",
+            "fundingRate",
+            "--dry-run",
+            "--json",
+            "BTCUSDT",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert json.loads(result.stdout) == {
+        "command": "verify",
+        "dry_run": True,
+        "summary": {
+            "total_zips": 6,
+            "to_verify": 2,
+            "skipped": 3,
+            "orphan_zips": 1,
+            "orphan_checksums": 1,
+        },
+        "to_verify": [str(tmp_path / "relative-home/z.zip"), str(tmp_path / "relative-home/a.zip")],
+    }
+    assert result.stderr.strip()
+    assert not (tmp_path / "relative-home").exists()
+
+
+@pytest.mark.parametrize("keep_failed", [False, True])
+def test_cli_verify_json_failed_pair_cleanup(monkeypatch, tmp_path, keep_failed) -> None:
+    """Failed paths survive cleanup in JSON while keep-failed controls actual file retention."""
+    monkeypatch.chdir(tmp_path)
+    base_dir = tmp_path / "relative-home/data/futures/um/daily/fundingRate/BTCUSDT"
+    base_dir.mkdir(parents=True)
+    zip_path = base_dir / "failed.zip"
+    zip_path.write_bytes(b"bad archive")
+    checksum_path = base_dir / "failed.zip.CHECKSUM"
+    checksum_path.write_text(f"{'0' * 64}  failed.zip\n", encoding="utf-8")
+    marker_path = base_dir / "failed.zip.100.verified"
+    marker_path.touch()
+
+    result = runner.invoke(
+        app,
+        [
+            "--archive-home",
+            "relative-home",
+            "verify",
+            "um",
+            "--type",
+            "fundingRate",
+            "--json",
+            *(["--keep-failed"] if keep_failed else []),
+            "BTCUSDT",
+        ],
+    )
+
+    assert result.exit_code == 2, result.exception
+    assert json.loads(result.stdout) == {
+        "command": "verify",
+        "dry_run": False,
+        "summary": {
+            "total_zips": 1,
+            "verified": 0,
+            "failed": 1,
+            "skipped": 0,
+            "orphan_zips": 0,
+            "orphan_checksums": 0,
+        },
+        "failed_details": [{"path": str(zip_path), "detail": "checksum mismatch"}],
+    }
+    assert zip_path.exists() is keep_failed
+    assert checksum_path.exists() is keep_failed
+    assert not marker_path.exists()
+    assert "failed.zip" in result.stderr
+    assert "checksum mismatch" in result.stderr
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+@pytest.mark.parametrize(
+    "scenario", ["success", "empty", "orphan-zip", "orphan-checksum", "failed"]
+)
+def test_cli_verify_json_results(monkeypatch, tmp_path, dry_run, scenario) -> None:
+    """Returned verification results always emit their mode's document with clean stdout."""
+    skipped = 1 if scenario == "success" else 0
+    verified = 2 if scenario == "success" and not dry_run else 0
+    pending = [Path("relative-home/pending.zip")] if scenario == "success" and dry_run else []
+    orphan_zips = [Path("relative-home/orphan.zip")] if scenario == "orphan-zip" else []
+    orphan_checksums = (
+        [Path("relative-home/missing.zip.CHECKSUM")] if scenario == "orphan-checksum" else []
+    )
+    failed_details = (
+        {
+            Path("relative-home/z.zip"): "verify-detail-payload-42-z",
+            Path("relative-home/a.zip"): "verify-detail-payload-42-a",
+        }
+        if scenario == "failed" and not dry_run
+        else {}
+    )
+
+    def fake_run(self):
+        assert self.progress_bar is True
+        logger.info("verify-log-payload-42")
+        with make_reporter(True, total=1, description="verify-progress-42") as reporter:
+            reporter.tick(ProgressEvent(name="BTCUSDT", ok=True))
+        if dry_run:
+            return VerifyDiffResult(pending, skipped, orphan_zips, orphan_checksums)
+        return VerifyResult(
+            skipped, verified, len(orphan_zips), len(orphan_checksums), failed_details
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveVerifyWorkflow.run", fake_run)
+    result = runner.invoke(
+        app,
+        [
+            "-vv",
+            "--archive-home",
+            "relative-home",
+            "verify",
+            "um",
+            "--type",
+            "fundingRate",
+            "--json",
+            "--progress-bar",
+            *(["--dry-run"] if dry_run else []),
+            "BTCUSDT",
+        ],
+    )
+
+    assert result.exit_code == (2 if failed_details else 0), result.exception
+    document = json.loads(result.stdout)
+    assert document["command"] == "verify"
+    assert document["dry_run"] is dry_run
+    assert all(type(value) is int and value >= 0 for value in document["summary"].values())
+    if dry_run:
+        assert document == {
+            "command": "verify",
+            "dry_run": True,
+            "summary": {
+                "total_zips": len(pending) + skipped + len(orphan_zips),
+                "to_verify": len(pending),
+                "skipped": skipped,
+                "orphan_zips": len(orphan_zips),
+                "orphan_checksums": len(orphan_checksums),
+            },
+            "to_verify": [str(tmp_path / "relative-home/pending.zip")] if pending else [],
+        }
+    else:
+        assert document == {
+            "command": "verify",
+            "dry_run": False,
+            "summary": {
+                "total_zips": verified + len(failed_details) + skipped + len(orphan_zips),
+                "verified": verified,
+                "failed": len(failed_details),
+                "skipped": skipped,
+                "orphan_zips": len(orphan_zips),
+                "orphan_checksums": len(orphan_checksums),
+            },
+            "failed_details": [
+                {
+                    "path": str(tmp_path / "relative-home/z.zip"),
+                    "detail": "verify-detail-payload-42-z",
+                },
+                {
+                    "path": str(tmp_path / "relative-home/a.zip"),
+                    "detail": "verify-detail-payload-42-a",
+                },
+            ]
+            if failed_details
+            else [],
+        }
+    assert "verify-log-payload-42" in result.stderr
+    assert "verify-progress-42" in result.stderr
+    for detail in failed_details.values():
+        assert detail in result.stderr
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_cli_verify_json_orphan_cleanup(monkeypatch, tmp_path, dry_run) -> None:
+    """Orphan counts describe artifacts even when an orphan ZIP has no existing marker."""
+    base_dir = tmp_path / "data/futures/um/daily/fundingRate/BTCUSDT"
+    base_dir.mkdir(parents=True)
+    orphan_zip = base_dir / "orphan.zip"
+    orphan_zip.write_bytes(b"orphan")
+    unmarked_zip = base_dir / "unmarked.zip"
+    unmarked_zip.write_bytes(b"orphan without marker")
+    checksum_path = base_dir / "missing.zip.CHECKSUM"
+    checksum_path.write_text("orphan checksum", encoding="utf-8")
+    markers = [base_dir / "orphan.zip.100.verified", base_dir / "missing.zip.100.verified"]
+    for marker in markers:
+        marker.touch()
+
+    result = runner.invoke(
+        app,
+        [
+            "--archive-home",
+            str(tmp_path),
+            "verify",
+            "um",
+            "--type",
+            "fundingRate",
+            "--json",
+            *(["--dry-run"] if dry_run else []),
+            "BTCUSDT",
+        ],
+    )
+
+    assert result.exit_code == 0, result.exception
+    assert json.loads(result.stdout) == {
+        "command": "verify",
+        "dry_run": dry_run,
+        "summary": {
+            "total_zips": 2,
+            **({"to_verify": 0} if dry_run else {"verified": 0, "failed": 0}),
+            "skipped": 0,
+            "orphan_zips": 2,
+            "orphan_checksums": 1,
+        },
+        "to_verify" if dry_run else "failed_details": [],
+    }
+    assert orphan_zip.exists()
+    assert unmarked_zip.exists()
+    assert checksum_path.exists() is dry_run
+    assert all(marker.exists() is dry_run for marker in markers)
+
+
+def test_cli_verify_json_dry_run_preserves_pending_pair(monkeypatch, tmp_path) -> None:
+    """Dry-run scans pending ZIPs without hashing, deleting artifacts, or changing markers."""
+    base_dir = tmp_path / "data/futures/um/daily/fundingRate/BTCUSDT"
+    base_dir.mkdir(parents=True)
+    zip_path = base_dir / "pending.zip"
+    zip_path.write_bytes(b"pending")
+    checksum_path = base_dir / "pending.zip.CHECKSUM"
+    checksum_path.write_text("invalid checksum", encoding="utf-8")
+    legacy_marker = base_dir / "pending.zip.verified"
+    legacy_marker.touch()
+    contents_before = {path: path.read_bytes() for path in base_dir.iterdir()}
+
+    def unexpected_verification(zip_path):
+        pytest.fail("Dry-run must not hash pending files.")
+
+    monkeypatch.setattr(
+        "binance_datatool.workflow.verify.verify_single_file", unexpected_verification
+    )
+    result = runner.invoke(
+        app,
+        [
+            "--archive-home",
+            str(tmp_path),
+            "verify",
+            "um",
+            "--type",
+            "fundingRate",
+            "--json",
+            "--dry-run",
+            "BTCUSDT",
+        ],
+    )
+
+    assert result.exit_code == 0, result.exception
+    assert json.loads(result.stdout) == {
+        "command": "verify",
+        "dry_run": True,
+        "summary": {
+            "total_zips": 1,
+            "to_verify": 1,
+            "skipped": 0,
+            "orphan_zips": 0,
+            "orphan_checksums": 0,
+        },
+        "to_verify": [str(zip_path)],
+    }
+    assert {path: path.read_bytes() for path in base_dir.iterdir()} == contents_before
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--archive-home", "/tmp/home", "verify", "um", "BTCUSDT"],
+        ["verify", "um", "--type", "fundingRate", "BTCUSDT"],
+        ["--archive-home", "/tmp/home", "verify", "um", "--type", "fundingRate"],
+    ],
+)
+def test_cli_verify_json_pre_result_errors(
+    monkeypatch, no_workflow_execution, arguments, dry_run
+) -> None:
+    """Invalid arguments and missing configuration retain an empty stdout before any result."""
+    monkeypatch.delenv("BINANCE_DATATOOL_ARCHIVE_HOME", raising=False)
+    result = runner.invoke(app, [*arguments, "--json", *(["--dry-run"] if dry_run else [])])
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert result.stderr.strip()
+
+
+def test_cli_verify_json_unhandled_error_has_no_result(monkeypatch) -> None:
+    """Workflow exceptions retain their existing failure boundary without a JSON result."""
+
+    def fake_run(self):
+        raise RuntimeError("verify-exception-payload-42")
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveVerifyWorkflow.run", fake_run)
+    result = runner.invoke(
+        app,
+        [
+            "--archive-home",
+            "/tmp/home",
+            "verify",
+            "um",
+            "--type",
+            "fundingRate",
+            "--json",
+            "BTCUSDT",
+        ],
+    )
+    assert result.exit_code == 1
+    assert isinstance(result.exception, RuntimeError)
+    assert str(result.exception) == "verify-exception-payload-42"
+    assert result.stdout == ""
