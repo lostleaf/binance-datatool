@@ -23,6 +23,7 @@ from binance_datatool.common import (
     build_symbol_filter,
     resolve_archive_home,
 )
+from binance_datatool.common.constants import S3_DOWNLOAD_PREFIX
 from binance_datatool.common.path import archive_path_parts, validate_interval
 from binance_datatool.workflow import (
     ArchiveDownloadWorkflow,
@@ -258,6 +259,7 @@ def list_files_command(
         typer.Option("--only-checksum", help="Print only .zip.CHECKSUM files."),
     ] = False,
     progress_bar: ProgressBarOption = False,
+    json_output: JsonOutputOption = False,
 ) -> None:
     """List archive files under one or more symbol directories."""
     if only_zip and only_checksum:
@@ -282,7 +284,12 @@ def list_files_command(
     )
     result = asyncio.run(workflow.run())
 
+    per_symbol: list[dict[str, object]] = []
+    returned_files = 0
     for entry in result.per_symbol:
+        files: list[dict[str, object]] = []
+        if json_output:
+            per_symbol.append({"symbol": entry.symbol, "files": files, "error": entry.error})
         if entry.error is not None:
             logger.error("{}: {}", entry.symbol, entry.error)
             continue
@@ -293,6 +300,19 @@ def list_files_command(
                 only_zip=only_zip,
                 only_checksum=only_checksum,
             ):
+                continue
+
+            if json_output:
+                files.append(
+                    {
+                        "url": f"{S3_DOWNLOAD_PREFIX}/{archive_file.key}",
+                        "size": archive_file.size,
+                        "last_modified": archive_file.last_modified.astimezone(UTC).strftime(
+                            "%Y-%m-%dT%H:%M:%SZ"
+                        ),
+                    }
+                )
+                returned_files += 1
                 continue
 
             relative_path = _format_relative_path(
@@ -308,6 +328,20 @@ def list_files_command(
                 typer.echo(f"{archive_file.size}\t{timestamp}\t{relative_path}")
             else:
                 typer.echo(relative_path)
+
+    if json_output:
+        emit_json(
+            "list-files",
+            dry_run=False,
+            summary={
+                "requested_symbols": result.requested_symbols,
+                "successful_symbols": result.successful_symbols,
+                "failed_symbols": result.failed_symbols,
+                "total_remote_files": result.total_remote_files,
+                "returned_files": returned_files,
+            },
+            per_symbol=per_symbol,
+        )
 
     _warn_if_empty_remote(
         total_remote=result.total_remote_files,

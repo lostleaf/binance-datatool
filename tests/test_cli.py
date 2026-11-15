@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -38,6 +38,71 @@ from binance_datatool.workflow import (
 )
 
 runner = CliRunner(env={"TERM": "dumb"})
+
+
+def test_cli_list_files_json_metadata_without_archive_home(
+    monkeypatch, sample_archive_files
+) -> None:
+    """Remote JSON metadata remains usable without local archive configuration."""
+    monkeypatch.delenv("BINANCE_DATATOOL_ARCHIVE_HOME", raising=False)
+
+    async def fake_run(self) -> ListFilesResult:
+        return ListFilesResult(
+            per_symbol=[
+                SymbolListFilesResult(
+                    "BTCUSDT",
+                    [
+                        ArchiveFile(
+                            sample_archive_files[0].key,
+                            1048,
+                            datetime(2026, 4, 1, 16, 6, 34, tzinfo=timezone(timedelta(hours=8))),
+                        ),
+                        sample_archive_files[1],
+                    ],
+                    None,
+                )
+            ]
+        )
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveListFilesWorkflow.run", fake_run)
+    result = runner.invoke(
+        app,
+        ["list-files", "um", "BTCUSDT", "--type", "fundingRate", "--freq", "monthly", "--json"],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {
+        "command": "list-files",
+        "dry_run": False,
+        "summary": {
+            "requested_symbols": 1,
+            "successful_symbols": 1,
+            "failed_symbols": 0,
+            "total_remote_files": 2,
+            "returned_files": 2,
+        },
+        "per_symbol": [
+            {
+                "symbol": "BTCUSDT",
+                "error": None,
+                "files": [
+                    {
+                        "url": "https://data.binance.vision/data/futures/um/monthly/fundingRate/"
+                        "BTCUSDT/BTCUSDT-fundingRate-2026-03.zip",
+                        "size": 1048,
+                        "last_modified": "2026-04-01T08:06:34Z",
+                    },
+                    {
+                        "url": "https://data.binance.vision/data/futures/um/monthly/fundingRate/"
+                        "BTCUSDT/BTCUSDT-fundingRate-2026-03.zip.CHECKSUM",
+                        "size": 105,
+                        "last_modified": "2026-04-01T08:06:34Z",
+                    },
+                ],
+            }
+        ],
+    }
+    assert result.stderr == ""
 
 
 @pytest.mark.parametrize(
@@ -739,6 +804,251 @@ def test_cli_list_files_passes_progress_bar_flag(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
+
+
+@pytest.mark.parametrize("only_flag", ["--only-zip", "--only-checksum"])
+@pytest.mark.parametrize("long_format", [False, True])
+def test_cli_list_files_json_filters_keep_remote_counts(
+    monkeypatch, sample_archive_files, only_flag, long_format
+) -> None:
+    """Filtering changes returned counts, while long mode leaves JSON fields intact."""
+
+    async def fake_run(self) -> ListFilesResult:
+        return ListFilesResult([SymbolListFilesResult("BTCUSDT", sample_archive_files)])
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveListFilesWorkflow.run", fake_run)
+    result = runner.invoke(
+        app,
+        [
+            "list-files",
+            "um",
+            "BTCUSDT",
+            "--type",
+            "fundingRate",
+            "--json",
+            only_flag,
+            *(["--long"] if long_format else []),
+        ],
+    )
+
+    assert result.exit_code == 0
+    document = json.loads(result.stdout)
+    assert document["summary"] == {
+        "requested_symbols": 1,
+        "successful_symbols": 1,
+        "failed_symbols": 0,
+        "total_remote_files": 2,
+        "returned_files": 1,
+    }
+    assert document["per_symbol"] == [
+        {
+            "symbol": "BTCUSDT",
+            "error": None,
+            "files": [
+                {
+                    "url": "https://data.binance.vision/data/futures/um/monthly/fundingRate/"
+                    "BTCUSDT/BTCUSDT-fundingRate-2026-03.zip"
+                    + (".CHECKSUM" if only_flag == "--only-checksum" else ""),
+                    "size": 105 if only_flag == "--only-checksum" else 1048,
+                    "last_modified": "2026-04-01T08:06:34Z",
+                }
+            ],
+        }
+    ]
+    assert result.stderr == ""
+
+
+@pytest.mark.parametrize("outcome", ["empty-result", "empty-symbol", "filtered-symbol"])
+def test_cli_list_files_json_retains_empty_records_and_warning_conditions(
+    monkeypatch, sample_archive_files, stderr_messages, outcome
+) -> None:
+    """An output filter cannot discard symbol records or create an empty-inventory warning."""
+
+    async def fake_run(self) -> ListFilesResult:
+        if outcome == "empty-result":
+            return ListFilesResult([])
+        return ListFilesResult(
+            [
+                SymbolListFilesResult(
+                    "BTCUSDT", sample_archive_files[1:] if outcome == "filtered-symbol" else []
+                )
+            ]
+        )
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveListFilesWorkflow.run", fake_run)
+    result = runner.invoke(
+        app,
+        ["list-files", "um", "BTCUSDT", "--type", "fundingRate", "--json", "--only-zip"],
+    )
+
+    assert result.exit_code == 0
+    document = json.loads(result.stdout)
+    assert document["per_symbol"] == (
+        [] if outcome == "empty-result" else [{"symbol": "BTCUSDT", "files": [], "error": None}]
+    )
+    assert document["summary"] == {
+        "requested_symbols": 0 if outcome == "empty-result" else 1,
+        "successful_symbols": 0 if outcome == "empty-result" else 1,
+        "failed_symbols": 0,
+        "total_remote_files": 1 if outcome == "filtered-symbol" else 0,
+        "returned_files": 0,
+    }
+    if outcome == "filtered-symbol":
+        assert result.stderr == ""
+        assert stderr_messages == []
+    else:
+        assert len(stderr_messages) == 1
+        assert stderr_messages[0] in result.stderr
+
+
+@pytest.mark.parametrize("all_failed", [False, True])
+@pytest.mark.parametrize("verbosity", [0, 1, 2])
+@pytest.mark.parametrize("progress_bar", [False, True])
+def test_cli_list_files_json_listing_failures_keep_stdout_clean(
+    monkeypatch, sample_archive_files, stderr_messages, all_failed, verbosity, progress_bar
+) -> None:
+    """Partial and all-symbol failures serialize before exit, with diagnostics on stderr."""
+
+    async def fake_run(self) -> ListFilesResult:
+        entries = [
+            SymbolListFilesResult("ETHUSDT", [], "listing-error-eth-41"),
+            SymbolListFilesResult("BNBUSDT", [], "listing-error-bnb-41"),
+        ]
+        if not all_failed:
+            entries.insert(1, SymbolListFilesResult("BTCUSDT", sample_archive_files))
+        logger.info("listing-log-41")
+        with make_reporter(
+            self.progress_bar, total=len(entries), description="listing-progress-41"
+        ) as reporter:
+            for entry in entries:
+                reporter.tick(ProgressEvent(name=entry.symbol, ok=entry.error is None))
+        return ListFilesResult(entries)
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveListFilesWorkflow.run", fake_run)
+    result = runner.invoke(
+        app,
+        [
+            *(["-v"] * verbosity),
+            "list-files",
+            "um",
+            "ETHUSDT",
+            "BTCUSDT",
+            "BNBUSDT",
+            "--type",
+            "fundingRate",
+            "--json",
+            *(["--progress-bar"] if progress_bar else []),
+        ],
+    )
+
+    assert result.exit_code == 2
+    document = json.loads(result.stdout)
+    assert document["command"] == "list-files"
+    assert document["dry_run"] is False
+    assert document["summary"] == {
+        "requested_symbols": 2 if all_failed else 3,
+        "successful_symbols": 0 if all_failed else 1,
+        "failed_symbols": 2,
+        "total_remote_files": 0 if all_failed else 2,
+        "returned_files": 0 if all_failed else 2,
+    }
+    assert [entry["symbol"] for entry in document["per_symbol"]] == (
+        ["ETHUSDT", "BNBUSDT"] if all_failed else ["ETHUSDT", "BTCUSDT", "BNBUSDT"]
+    )
+    assert document["per_symbol"][0] == {
+        "symbol": "ETHUSDT",
+        "files": [],
+        "error": "listing-error-eth-41",
+    }
+    assert document["per_symbol"][-1] == {
+        "symbol": "BNBUSDT",
+        "files": [],
+        "error": "listing-error-bnb-41",
+    }
+    for symbol, error in [("ETHUSDT", "listing-error-eth-41"), ("BNBUSDT", "listing-error-bnb-41")]:
+        assert any(symbol in line and error in line for line in result.stderr.splitlines())
+    assert ("listing-log-41" in result.stderr) is (verbosity > 0)
+    if progress_bar or verbosity:
+        assert "listing-progress-41" in result.stderr
+    assert stderr_messages == []
+
+
+@pytest.mark.parametrize("piped", [False, True])
+def test_cli_list_files_json_preserves_normalized_duplicate_and_file_order(
+    monkeypatch, sample_archive_files, piped
+) -> None:
+    """The real listing workflow collapses uppercase duplicate inputs in first-seen order."""
+
+    async def fake_list_symbol_files(
+        self, trade_type, data_freq, data_type, symbol, interval=None, *, session=None
+    ):
+        return list(reversed(sample_archive_files)) if symbol == "BTCUSDT" else []
+
+    monkeypatch.setattr(
+        "binance_datatool.archive.ArchiveClient.list_symbol_files", fake_list_symbol_files
+    )
+    result = runner.invoke(
+        app,
+        [
+            "list-files",
+            "um",
+            "--type",
+            "fundingRate",
+            "--json",
+            *([] if piped else ["ethusdt", "btcusdt", "ETHUSDT", "BTCUSDT"]),
+        ],
+        input="ethusdt\nbtcusdt\nETHUSDT\nBTCUSDT\n" if piped else None,
+    )
+
+    assert result.exit_code == 0
+    document = json.loads(result.stdout)
+    assert document["per_symbol"][0] == {"symbol": "ETHUSDT", "files": [], "error": None}
+    assert [entry["symbol"] for entry in document["per_symbol"]] == ["ETHUSDT", "BTCUSDT"]
+    assert [file["size"] for file in document["per_symbol"][1]["files"]] == [105, 1048]
+    assert document["summary"] == {
+        "requested_symbols": 2,
+        "successful_symbols": 2,
+        "failed_symbols": 0,
+        "total_remote_files": 2,
+        "returned_files": 2,
+    }
+    assert result.stderr == ""
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["um", "BTCUSDT", "--type", "fundingRate", "--only-zip", "--only-checksum"],
+        ["um", "BTCUSDT"],
+        ["um", "BTCUSDT", "--type", "fundingRate", "--interval", "1m"],
+        ["um", "--type", "fundingRate"],
+        ["um", "BTCUSDT", "--type", "fundingRate", "--dry-run"],
+    ],
+)
+def test_cli_list_files_json_argument_errors_have_no_document(
+    no_workflow_execution, arguments
+) -> None:
+    """Invalid JSON invocations retain validation exits without a result envelope."""
+    result = runner.invoke(app, ["list-files", *arguments, "--json"], input="")
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert result.stderr.strip()
+
+
+def test_cli_list_files_json_unhandled_error_has_no_result(monkeypatch) -> None:
+    """An exception before a workflow result does not invent a completed listing."""
+
+    async def fake_run(self) -> ListFilesResult:
+        raise RuntimeError("listing-exception-41")
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveListFilesWorkflow.run", fake_run)
+    result = runner.invoke(app, ["list-files", "um", "BTCUSDT", "--type", "fundingRate", "--json"])
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, RuntimeError)
+    assert str(result.exception) == "listing-exception-41"
+    assert result.stdout == ""
 
 
 def test_cli_download_requires_symbols(no_workflow_execution) -> None:
