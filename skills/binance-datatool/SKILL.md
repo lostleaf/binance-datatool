@@ -331,11 +331,27 @@ binance-datatool -v --archive-home ./archive verify um --freq monthly --type fun
 binance-datatool -v --archive-home ./archive verify um --freq monthly --type fundingRate --json BTCUSDT
 ```
 
+Verification applies each completed outcome's file effects before progress advances. Passes
+write fresh markers immediately; failures clear their markers and apply `--keep-failed` before
+being reported. Completed failure details preserve caller Symbol order and sorted paths within
+each Symbol.
+
+To interrupt verification, send one Ctrl-C. Pending work that can still be cancelled is cancelled;
+the command waits for already-started and prefetched work, releases workers, and exits `130`.
+The wait has no fixed duration. Text and JSON modes emit interruption diagnostics on stderr and
+no completed-result JSON. Treat an interrupted invocation as having no completed result.
+
+Resume with the same command: retained fresh markers are skipped. `--dry-run` shows the
+unrecorded remainder without hashing, starting workers, cleanup, or marker writes. Only outcomes
+whose file effects the parent applied are saved; hashes completed during shutdown can be
+repeated. Saved markers can slightly exceed the last reported success count.
+
 | Situation | Exit code |
 |-----------|-----------|
 | No verification failures (including empty scans, orphan cleanup alone, or a completed dry-run) | `0` |
 | At least one ZIP failed verification, with or without `--keep-failed` | `2` |
 | Missing archive home or invalid arguments | `2` |
+| Ctrl-C during verification | `130` |
 
 Failure details identify malformed `.CHECKSUM` files as invalid. Inspect or replace the
 checksum file before retrying verification.

@@ -86,3 +86,93 @@ glibc 2.39, and 32 reported CPUs. The isolated comparison dependency was
 The median improved by **3.95 times**, exceeding the issue's three-times target
 on this environment. This controlled parser measurement does not remeasure the
 historical full-archive listing runs or guarantee a speedup on every machine.
+
+## Verification interruption
+
+`verify_interrupt.py` is a Linux-only real CLI/process-group signal harness. Run from the
+repository root with the desired interpreter and this checkout on `PYTHONPATH`:
+
+```bash
+PYTHONPATH=src uv run python benchmarks/verify_interrupt.py --count 60000 --size 8192 --repeat 3
+PYTHONPATH=src uv run python benchmarks/verify_interrupt.py --count 60000 --size 8192 --repeat 1 --control
+PYTHONPATH=src uv run python benchmarks/verify_interrupt.py --count 400 --size 268435456 --repeat 1
+PYTHONPATH=src uv run python benchmarks/verify_interrupt.py --count 400 --size 268435456 --repeat 1 --control
+```
+
+`--count` and `--repeat` must be positive, `--size` must be nonnegative, and `--deadline`
+must be finite and positive. Invalid arguments exit 2 before creating a disposable Archive home.
+
+Every repetition creates and deletes a disposable Archive home. Small payloads use independent
+files; larger payloads use hard links to a single finite payload so the slower workload hashes
+100 GiB without reserving 100 GiB of storage. Checksums are independent files. Both variants
+perform real SHA256 comparisons through real spawned workers. The harness overrides the child
+CPU count to four, selecting two workers through the existing default; it adds no production
+worker option. Results measure warm local storage, not cold-cache behavior.
+
+The harness drains stdout/stderr concurrently and sends exactly one process-group SIGINT after
+sampled verification progress while unfinished targets remain. It records acknowledged successes
+including the final aborted progress count, fresh markers retained by rescan, remaining targets,
+exit latency, output, and surviving non-zombie group members. Its 60-second default deadline
+forces cleanup on failure; this safeguard does not define a product shutdown limit. `--trace`
+captures the parent's thread stacks two seconds after a signal if the process is still alive,
+alongside per-process `/proc/PID/io` character counts at signal time and capture time.
+
+For baseline diagnosis, create a detached disposable checkout at
+`c9f9aa1e66bf4790f206c2c305729eeeb42bf524` and set `PYTHONPATH` to that checkout's `src` while
+running this harness. This pins the implementation without editing the current checkout or
+using a user's Archive home. To reproduce the original stall path, use the slower workload
+with `--trace --deadline 8`. No temporary planning script is required.
+
+### Diagnosis and regression evidence
+
+Measured on 2026-11-15, Linux 7.0.0-42-generic x86_64 and ext4 on `/dev/nvme0n1p2` at `/tmp`.
+The baseline and candidate both retain the spawned process pool. In baseline tiny-file trials,
+one group SIGINT often exited quickly by interrupting idle workers, which emitted worker
+`KeyboardInterrupt` tracebacks. The historical tiny-file stall was timing-sensitive and did
+not recur in those trials. Every trial still lost all new markers despite reported successes.
+
+With 400 finite 256 MiB targets and active hashes at interruption, the baseline stalled until
+the harness deadline with zero saved markers after 20 reported successes. A live stack capture
+located the parent in `ProcessPoolExecutor.__exit__ → shutdown → thread.join`; the executor
+manager thread was waiting for worker results. In two seconds after the signal, each worker's
+`rchar` increased from 2,692,908,944 to 7,977,524,916 bytes: roughly twenty additional payloads
+per worker, exceeding the prefetched active subset. This establishes queued-work drainage during
+normal context-manager shutdown as the reproduced stall's cause, rather than inferring it from
+elapsed time alone. The uninterrupted baseline completed the same finite workload in 21.077 s.
+It does not establish the exact stack of the historical uninstrumented tiny-file run.
+
+The workflow regression first failed with zero fresh markers at the first reported success.
+The real CLI signal/resume regression also failed against the baseline: six acknowledged
+successes and zero fresh markers. Both pass with incremental parent effects and cancellation
+before waiting. Maintained tests additionally cover text/JSON parity, process ownership during
+submission/startup, no surviving workers, mixed markers/failure policies, progress after effects,
+and deterministic completed failure order. The completion-order test uses a FIFO checksum gate,
+so its order assertion does not depend on relative hashing speeds.
+
+### Recorded candidate results
+
+Candidate code: `6854056`, with fixture/reporting improvements in `e47deed`. Each tiny-file row
+is a separate 60,000-pair, 8 KiB run using independent ZIP files. Time is measured from SIGINT
+to exit and process-group cleanup; control rows measure the entire CLI invocation.
+
+| Python | Workload | Exit latency / control time (s) | Acknowledged successes | Fresh markers retained | Rescan pending |
+|--------|----------|--------------------------------|------------------------|------------------------|----------------|
+| 3.11.18 | 60,000 × 8 KiB, trial 1 | 0.185 | 3,008 | 3,008 | 56,992 |
+| 3.11.18 | 60,000 × 8 KiB, trial 2 | 0.181 | 3,002 | 3,002 | 56,998 |
+| 3.11.18 | 60,000 × 8 KiB, trial 3 | 0.184 | 3,004 | 3,004 | 56,996 |
+| 3.11.18 | 60,000 × 8 KiB, uninterrupted | 3.471 | 60,000 | 60,000 | 0 |
+| 3.14.10 | 60,000 × 8 KiB, trial 1 | 0.111 | 3,002 | 3,002 | 56,998 |
+| 3.14.10 | 60,000 × 8 KiB, trial 2 | 0.111 | 3,001 | 3,002 | 56,998 |
+| 3.14.10 | 60,000 × 8 KiB, trial 3 | 0.109 | 3,001 | 3,002 | 56,998 |
+| 3.14.10 | 60,000 × 8 KiB, uninterrupted | 3.291 | 60,000 | 60,000 | 0 |
+| 3.11.18 | 400 × 256 MiB, active hashes | 0.369 | 20 | 20 | 380 |
+| 3.14.10 | 400 × 256 MiB, active hashes | 0.373 | 20 | 20 | 380 |
+| 3.14.10 | 400 × 256 MiB, uninterrupted | 20.792 | 400 | 400 | 0 |
+
+Every interrupted candidate invocation exited `130` after one signal, with empty stdout,
+no worker traceback, no surviving workers, and at least as many fresh markers as acknowledged
+successes. Controls exited `0`. The real CLI tests rerun the interrupted fixture, skip retained
+markers, and finish all remaining files on Python 3.11 and 3.14. These finite-workload latencies
+are measurements, not guarantees: already-started and executor-prefetched non-cancellable work
+can make other invocations wait longer. A marker created immediately before interruption can
+be saved without a corresponding progress tick, explaining the one-marker differences above.

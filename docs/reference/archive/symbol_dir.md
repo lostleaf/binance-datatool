@@ -66,7 +66,12 @@ files into these buckets:
 | `orphan_checksums` | `.CHECKSUM` files with no sibling `.zip`. |
 
 Returns a `SymbolScanResult` dataclass (module-internal — not re-exported
-from the package surface).
+from the package surface). The scan retains matching marker names internally for the
+verification workflow, including legacy and malformed names under the existing matching
+rules. A directory with exactly one orphan retains single-target cleanup matching, including
+markers such as `orphan.zip.bad.extra.verified`; multiple orphan targets retain grouped matching.
+Incremental result application and orphan cleanup reuse those names without another directory
+enumeration. Public marker convenience methods remain available independently.
 
 ## `create_symbol_archive_dir()`
 
@@ -102,8 +107,8 @@ archive_home/data/{trade_type.s3_path}/{data_freq}/{data_type}/{symbol}[/{interv
 ## `collect_markers_by_zip()`
 
 Module-level helper that collects all verification marker files for a list
-of zip paths, grouped by their parent zip. Used by the verify workflow to
-pre-collect markers and avoid per-file glob calls when applying verify results.
+of ZIP paths, grouped by their parent ZIP. Available for independent callers; the
+verification workflow reuses marker names from its initial Symbol scan instead.
 
 ```python
 from binance_datatool.archive.symbol_dir import collect_markers_by_zip

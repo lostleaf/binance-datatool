@@ -524,7 +524,13 @@ def verify_command(
         dry_run=dry_run,
         progress_bar=progress_bar,
     )
-    result = workflow.run()
+    try:
+        result = workflow.run()
+    except KeyboardInterrupt:
+        typer.echo(
+            "Verification interrupted; saved outcomes will be reused on the next run.", err=True
+        )
+        raise typer.Exit(code=130) from None
 
     if isinstance(result, VerifyDiffResult):
         if json_output:

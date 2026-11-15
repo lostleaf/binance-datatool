@@ -6,7 +6,8 @@ import math
 import os
 import time
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
 from typing import TYPE_CHECKING
 
 from binance_datatool.common.path import archive_path_parts
@@ -28,6 +29,7 @@ class SymbolScanResult:
     orphan_zips: list[Path]
     orphan_checksums: list[Path]
     skipped: int
+    _markers_by_zip: dict[Path, list[Path]] = field(default_factory=dict, repr=False)
 
 
 def _source_freshness_timestamp(zip_mtime: float, checksum_mtime: float) -> int:
@@ -175,6 +177,23 @@ class SymbolArchiveDir:
                     verified_names.add(name)
 
         zip_names = set(zip_entries)
+        checksum_zip_names = {name.removesuffix(".CHECKSUM") for name in checksum_entries}
+        marker_targets = zip_names | checksum_zip_names
+        orphan_targets = zip_names ^ checksum_zip_names
+        single_orphan = next(iter(orphan_targets)) if len(orphan_targets) == 1 else None
+        markers_by_zip: dict[Path, list[Path]] = defaultdict(list)
+        for marker_name in verified_names:
+            # Single-orphan cleanup historically uses the broader single-target
+            # glob, including malformed suffixes with multiple dots.
+            if single_orphan is not None and (
+                marker_name == f"{single_orphan}.verified"
+                or fnmatchcase(marker_name, f"{single_orphan}.*.verified")
+            ):
+                zip_name = single_orphan
+            else:
+                zip_name = _match_marker_to_zip(marker_name, marker_targets)
+            if zip_name is not None:
+                markers_by_zip[self.path / zip_name].append(self.path / marker_name)
         marker_timestamps = _parse_marker_timestamps(verified_names, zip_names)
 
         to_verify: list[Path] = []
@@ -206,6 +225,7 @@ class SymbolArchiveDir:
             orphan_zips=orphan_zips,
             orphan_checksums=orphan_checksums,
             skipped=skipped,
+            _markers_by_zip=dict(markers_by_zip),
         )
 
 

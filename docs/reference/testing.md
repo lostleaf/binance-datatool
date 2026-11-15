@@ -14,7 +14,8 @@ tests/
 ├── test_path.py                # Archive-home resolution (override, env var, missing)
 ├── test_progress.py            # Progress-reporting framework (LogReporter, TqdmReporter)
 ├── test_symbol_dir.py          # SymbolArchiveDir, create_symbol_archive_dir, marker protocol
-└── test_symbols.py             # Symbol inference unit and integration tests
+├── test_symbols.py             # Symbol inference unit and integration tests
+└── test_verify_interrupt.py    # Incremental effects and real CLI process-group signals
 ```
 
 For behavior assertions, human diagnostics, and machine-output contracts, follow the
@@ -30,6 +31,12 @@ and shared support.
   they run without network access. Assert emission and stream routing through the runner;
   the CLI diagnostic fixture can observe `typer.echo` emissions without freezing their wording.
   Keep counts and file effects covered in workflow and component results.
+
+The Linux signal regressions launch real CLI subprocesses and spawned workers against disposable
+archives. They wait for observable progress or controlled submission/startup readiness, drain
+stdout and stderr concurrently, send one process-group SIGINT, and force cleanup only on harness
+failure. The finite harness deadline is a test safeguard, not a product shutdown guarantee.
+The maintained [signal harness](../../benchmarks/verify_interrupt.py) also supports scale runs.
 
 ## Shared Test Support in `conftest.py`
 

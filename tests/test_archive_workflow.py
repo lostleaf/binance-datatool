@@ -914,11 +914,10 @@ def test_verify_workflow_keep_failed_preserves_files(tmp_path) -> None:
     assert not timestamped_marker.exists()
 
 
-def test_verify_workflow_groups_orphan_marker_cleanup_by_directory(
-    monkeypatch: pytest.MonkeyPatch,
+def test_verify_workflow_cleans_all_orphan_markers(
     tmp_path: Path,
 ) -> None:
-    """Orphan cleanup should batch marker invalidation per directory."""
+    """Orphan cleanup removes matching markers and preserves unrelated markers."""
     base_dir = _symbol_verify_dir(tmp_path)
     orphan_zip_a = base_dir / "orphan-a.zip"
     orphan_zip_b = base_dir / "orphan-b.zip"
@@ -938,15 +937,6 @@ def test_verify_workflow_groups_orphan_marker_cleanup_by_directory(
     marker_c.write_text("", encoding="utf-8")
     unrelated_marker.write_text("", encoding="utf-8")
 
-    calls: list[tuple[Path, set[str]]] = []
-    original_clear = SymbolArchiveDir.clear_markers_many
-
-    def record_clear(self: SymbolArchiveDir, zip_names) -> None:  # noqa: ANN001
-        calls.append((self.path, set(zip_names)))
-        original_clear(self, zip_names)
-
-    monkeypatch.setattr(SymbolArchiveDir, "clear_markers_many", record_clear)
-
     workflow = ArchiveVerifyWorkflow(
         trade_type=TradeType.spot,
         data_freq=DataFrequency.daily,
@@ -960,7 +950,6 @@ def test_verify_workflow_groups_orphan_marker_cleanup_by_directory(
     result = workflow.run()
 
     assert isinstance(result, VerifyResult)
-    assert calls == [(base_dir, {"orphan-a.zip", "orphan-b.zip", "missing.zip"})]
     assert not marker_a.exists()
     assert not marker_b.exists()
     assert not marker_c.exists()
@@ -1224,3 +1213,39 @@ async def test_archive_download_reuses_prepared_executable_after_replacement(
     assert result.downloaded == 1
     assert result.failed == 0
     assert local.read_bytes() == b"replacement"
+
+
+@pytest.mark.parametrize("orphan_suffix", [".zip", ".zip.CHECKSUM"])
+@pytest.mark.parametrize("other_orphan", [False, True])
+def test_verify_orphan_markers_preserve_single_target_matching(
+    tmp_path, monkeypatch, orphan_suffix, other_orphan
+):
+    """One orphan retains broad cleanup; multiple orphans retain grouped matching."""
+    directory = _symbol_verify_dir(tmp_path)
+    directory.mkdir(parents=True)
+    orphan = directory / f"orphan{orphan_suffix}"
+    orphan.write_bytes(b"orphan")
+    if other_orphan:
+        (directory / "other.zip").write_bytes(b"orphan")
+    marker = directory / "orphan.zip.bad.extra.verified"
+    marker.touch()
+    unrelated = directory / "unrelated.zip.bad.extra.verified"
+    unrelated.touch()
+
+    def forbidden_glob(*args, **kwargs):
+        raise AssertionError("orphan cleanup must reuse the symbol scan")
+
+    monkeypatch.setattr(Path, "glob", forbidden_glob)
+    result = ArchiveVerifyWorkflow(
+        TradeType.spot,
+        DataFrequency.daily,
+        DataType.klines,
+        ["BTCUSDT"],
+        tmp_path,
+        interval="1m",
+        n_workers=1,
+    ).run()
+    assert isinstance(result, VerifyResult)
+    assert marker.exists() is other_orphan
+    assert unrelated.exists()
+    assert orphan.exists() is (orphan_suffix == ".zip")

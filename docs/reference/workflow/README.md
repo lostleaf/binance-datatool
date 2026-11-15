@@ -338,14 +338,34 @@ local I/O and CPU work — no network access is needed.
 3. **Orphan cleanup** — orphan zips have their markers cleared (zip file is kept);
    orphan checksums and their markers are deleted.
 4. **Parallel verification** — submits `verify_single_file` tasks to a
-   `ProcessPoolExecutor` with `spawn` context. Reports progress via the shared
-   progress-reporting framework.
-5. **Post-verify** — pre-collects existing markers per directory (via
-   `collect_markers_by_zip`) to avoid per-file glob calls, then for each result:
-   clears old markers, writes a fresh timestamped marker on pass, or deletes the
-   zip + checksum on failure (unless `keep_failed`).
+   `ProcessPoolExecutor` with `spawn` context. Initialized workers ignore SIGINT;
+   the parent coordinates interruption and owns archive mutations and progress.
+5. **Incremental effects** — as each result arrives, clears its matching markers
+   using names retained from the Symbol scan. A pass writes a fresh timestamped
+   marker. A failure retains its path and diagnostic and deletes the ZIP/checksum
+   pair unless `keep_failed` is enabled. Failed outcomes retain no marker in either
+   mode. Progress advances only after that result's filesystem effects succeed.
 
-Returns `VerifyDiffResult` when `dry_run=True`, otherwise `VerifyResult`.
+Returns `VerifyDiffResult` when `dry_run=True`, otherwise a completed `VerifyResult`.
+Effects follow completion order; completed `failed_details` preserves original pending-path
+order: caller Symbol order, then sorted paths within each Symbol.
+
+### Interruption and resume
+
+One Ctrl-C cancels cancellable pending tasks before executor shutdown waits for already-started
+work, including executor-prefetched work that is no longer cancellable. The wait has no fixed
+time limit. POSIX signal delivery is deferred across pool construction and individual submissions
+so newly started processes are registered before interruption cleanup begins. Executor resources
+are released, then `KeyboardInterrupt` propagates to the caller.
+
+Already-applied filesystem effects survive interruption. A worker finishing a hash alone does
+not save that result; unapplied outcomes, including hashes completed during shutdown, may be
+repeated. Progress can slightly undercount saved successes if interrupted between marker
+creation and reporting. The next run's scan skips retained fresh markers; dry-run shows the
+unrecorded remainder. Dry-run performs no hashing, worker startup, cleanup, or marker writes.
+An interrupted run returns no completed `VerifyResult`; the CLI exits `130` and emits no
+completed-result JSON. See the [signal benchmark](../../../benchmarks/README.md#verification-interruption)
+for the diagnosed shutdown path and measured workloads.
 
 ### Timestamped marker protocol
 
@@ -384,7 +404,7 @@ Returned by `ArchiveVerifyWorkflow.run()` after a real verify run.
 | `verified` | `int` | Zip files that passed SHA256 comparison in this run. |
 | `orphan_zips` | `int` | Orphan zips whose markers were cleared. |
 | `orphan_checksums` | `int` | Orphan checksums that were deleted. |
-| `failed_details` | `dict[Path, str]` | Failed zip paths mapped to failure descriptions. |
+| `failed_details` | `dict[Path, str]` | Failed ZIP paths mapped to diagnostics, in original pending-path order. |
 | `failed` | `int` *(property)* | `len(failed_details)`. |
 | `total_zips` | `int` *(property)* | `skipped + verified + failed + orphan_zips`. |
 

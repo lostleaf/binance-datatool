@@ -610,6 +610,24 @@ Per-file diagnostics on stderr include the failed filename and failure detail.
 Like dry-run mode, a successful but empty local scan still emits a warning to
 stderr instead of silently pretending everything is current.
 
+### Interruption and resume
+
+The parent applies each result's filesystem effects before reporting verification progress.
+Fresh markers are written during the run; failures clear their markers and apply the selected
+file-retention policy immediately. Completed failure details retain caller Symbol order and
+sorted paths within each Symbol, even when workers finish out of order.
+
+One Ctrl-C cancels pending work that can still be cancelled and waits for already-started
+work, including prefetched tasks. It then releases workers, emits an interruption diagnostic
+on stderr, and exits `130` in text and JSON modes. This wait has no fixed duration. An interrupted
+invocation emits no completed-result document on stdout and returns no completed summary.
+
+Rerun the same command to skip retained fresh markers and verify the unrecorded remainder.
+Use `--dry-run` to preview that remainder without hashing, starting workers, or changing files.
+Only results whose filesystem effects the parent applied are saved; hashes completed during
+shutdown can be repeated. A signal between marker creation and reporting can leave slightly
+more saved markers than the final reported success count.
+
 ### Orphan handling
 
 | Orphan type | Action |
@@ -637,6 +655,7 @@ invalidation rules. Verification reads only local files; it does not fetch missi
 | Unhandled runtime error (e.g. process pool failure) | Propagates; not translated to exit `2` |
 | BINANCE_DATATOOL_ARCHIVE_HOME not configured | `2` |
 | Argument validation error | `2` |
+| Ctrl-C during verification | `130` |
 
 ### Composition with other commands
 
@@ -677,9 +696,9 @@ User runs:
   │  Scans local symbol directories; classifies zips     │
   │  into verify/skip/orphan buckets; cleans orphans;    │
   │  verifies SHA256 checksums in parallel via           │
-  │  ProcessPoolExecutor (spawn); writes/clears markers; │
-  │  optionally deletes failed files. Reports progress   │
-  │  via the shared progress-reporting framework.        │
+  │  ProcessPoolExecutor (spawn); applies each result's  │
+  │  marker/cleanup effects before reporting progress;  │
+  │  cancels pending work on interruption.               │
   └──────────────────────┬───────────────────────────────┘
                          │ zip_path
   ┌──────────────────────▼───────────────────────────────┐
