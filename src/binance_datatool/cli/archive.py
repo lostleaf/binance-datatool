@@ -5,12 +5,15 @@ from __future__ import annotations
 import asyncio
 import sys
 from datetime import UTC
+from functools import partial
 from typing import TYPE_CHECKING, Annotated, TypeAlias
 
 import typer
 from loguru import logger
 
+from binance_datatool.archive import download_archive_files
 from binance_datatool.cli import app
+from binance_datatool.cli.output import JsonOutputOption, absolute_path, emit_json
 from binance_datatool.common import (
     ArchiveHomeNotConfiguredError,
     ContractType,
@@ -341,6 +344,7 @@ def download_command(
         typer.Option("--concurrency", min=1, help="Number of concurrent aria2 downloads."),
     ] = 64,
     progress_bar: ProgressBarOption = False,
+    json_output: JsonOutputOption = False,
 ) -> None:
     """Download archive files into the local archive directory."""
     _validate_interval(data_type, interval)
@@ -361,21 +365,65 @@ def download_command(
         inherit_aria2_proxy=aria2_proxy,
         concurrency=concurrency,
         progress_bar=progress_bar,
+        download_func=partial(download_archive_files, stdout_to_stderr=True)
+        if json_output
+        else None,
     )
     result = asyncio.run(workflow.run())
 
     if isinstance(result, DiffResult):
-        for entry in result.to_download:
-            typer.echo(
-                f"{entry.reason}\t{entry.remote.size}\t"
-                f"{_format_relative_path(entry.remote.key, trade_type, data_freq, data_type)}"
+        if json_output:
+            emit_json(
+                "download",
+                dry_run=True,
+                summary={
+                    "total_remote": result.total_remote,
+                    "skipped": result.skipped,
+                    "to_download": len(result.to_download),
+                    "listing_failed_symbols": result.listing_failed_symbols,
+                },
+                to_download=[
+                    {
+                        "path": absolute_path(entry.local_path),
+                        "size": entry.remote.size,
+                        "reason": entry.reason,
+                    }
+                    for entry in result.to_download
+                ],
+                listing_errors=[
+                    {"symbol": entry.symbol, "error": entry.error}
+                    for entry in result.listing_errors
+                ],
             )
+        else:
+            for entry in result.to_download:
+                typer.echo(
+                    f"{entry.reason}\t{entry.remote.size}\t"
+                    f"{_format_relative_path(entry.remote.key, trade_type, data_freq, data_type)}"
+                )
         typer.echo(
             f"{len(result.to_download)} files to download, {result.skipped} up to date",
             err=True,
         )
         _finalize_download_result(result)
         return
+
+    if json_output:
+        emit_json(
+            "download",
+            dry_run=False,
+            summary={
+                "total_remote": result.total_remote,
+                "skipped": result.skipped,
+                "downloaded": result.downloaded,
+                "failed": result.failed,
+                "listing_failed_symbols": result.listing_failed_symbols,
+            },
+            failed_paths=[absolute_path(path) for path in result.failed_paths],
+            listing_errors=[
+                {"symbol": entry.symbol, "error": entry.error} for entry in result.listing_errors
+            ],
+        )
 
     typer.echo(
         f"Done: {result.downloaded} downloaded, {result.failed} failed, {result.skipped} skipped",

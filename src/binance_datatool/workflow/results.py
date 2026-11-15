@@ -142,6 +142,7 @@ class DownloadResult:
     downloaded: int
     failed: int
     listing_errors: list[SymbolListingError]
+    failed_paths: list[Path] = field(default_factory=list)
 
     @property
     def listing_failed_symbols(self) -> int:

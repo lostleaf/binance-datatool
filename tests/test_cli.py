@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -1467,3 +1468,257 @@ def test_cli_routes_progress_and_filtered_diagnostics_to_stderr(
     assert result.stderr.count("warning-payload-32 BTCUSDT") == 1
     assert result.stderr.count("info-payload-32 ETHUSDT") == (1 if verbosity >= 1 else 0)
     assert result.stderr.count("debug-payload-32 BNBUSDT") == (1 if verbosity >= 2 else 0)
+
+
+def test_cli_download_json_dry_run_plan(monkeypatch, tmp_path, sample_archive_files) -> None:
+    """JSON plans retain reasons and sizes with absolute, possibly absent targets."""
+    monkeypatch.chdir(tmp_path)
+
+    async def fake_run(self) -> DiffResult:
+        assert self.archive_home == Path("relative-home")
+        assert self.dry_run is True
+        return DiffResult(
+            to_download=[
+                DiffEntry(sample_archive_files[0], Path("relative-home/new.zip"), "new"),
+                DiffEntry(
+                    sample_archive_files[1], Path("relative-home/old.zip.CHECKSUM"), "updated"
+                ),
+            ],
+            skipped=1,
+            total_remote=3,
+            listing_errors=[],
+        )
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveDownloadWorkflow.run", fake_run)
+    result = runner.invoke(
+        app,
+        [
+            "--archive-home",
+            "relative-home",
+            "download",
+            "um",
+            "--type",
+            "fundingRate",
+            "--dry-run",
+            "--json",
+            "BTCUSDT",
+        ],
+    )
+    assert result.exit_code == 0, result.stderr
+    assert json.loads(result.stdout) == {
+        "command": "download",
+        "dry_run": True,
+        "summary": {"total_remote": 3, "skipped": 1, "to_download": 2, "listing_failed_symbols": 0},
+        "to_download": [
+            {"path": str(tmp_path / "relative-home/new.zip"), "size": 1048, "reason": "new"},
+            {
+                "path": str(tmp_path / "relative-home/old.zip.CHECKSUM"),
+                "size": 105,
+                "reason": "updated",
+            },
+        ],
+        "listing_errors": [],
+    }
+    assert result.stderr.strip()
+    assert not (tmp_path / "relative-home").exists()
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+@pytest.mark.parametrize(
+    "scenario", ["success", "empty", "partial", "all-listings-failed", "transfer-failed"]
+)
+def test_cli_download_json_results(monkeypatch, tmp_path, dry_run, scenario) -> None:
+    """Returned results always emit one document before result-based exits."""
+    errors = (
+        [SymbolListingError("ETHUSDT", "listing-payload-39")]
+        if scenario in {"partial", "all-listings-failed", "mixed-failures"}
+        else []
+    )
+    skipped = 1 if scenario in {"success", "partial"} else 0
+    failed = 1 if scenario in {"transfer-failed", "mixed-failures"} and not dry_run else 0
+    downloaded = 1 if scenario in {"success", "partial", "mixed-failures"} and not dry_run else 0
+
+    async def fake_run(self):
+        assert self.progress_bar is True
+        logger.info("download-log-payload-39")
+        with make_reporter(True, total=1, description="download-progress-39") as reporter:
+            reporter.tick(ProgressEvent(name="BTCUSDT", ok=True))
+        if dry_run:
+            return DiffResult([], skipped, skipped, errors)
+        return DownloadResult(
+            total_remote=skipped + downloaded + failed,
+            skipped=skipped,
+            downloaded=downloaded,
+            failed=failed,
+            listing_errors=errors,
+            failed_paths=[Path("relative-home/failed.zip")] if failed else [],
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveDownloadWorkflow.run", fake_run)
+    result = runner.invoke(
+        app,
+        [
+            "-vv",
+            "--archive-home",
+            "relative-home",
+            "download",
+            "um",
+            "--type",
+            "fundingRate",
+            "--json",
+            "--progress-bar",
+            *(["--dry-run"] if dry_run else []),
+            "BTCUSDT",
+            "ETHUSDT",
+        ],
+    )
+    assert result.exit_code == (2 if errors or failed else 0), result.exception
+    document = json.loads(result.stdout)
+    assert document["command"] == "download"
+    assert document["dry_run"] is dry_run
+    summary = document["summary"]
+    assert all(type(value) is int and value >= 0 for value in summary.values())
+    assert summary["listing_failed_symbols"] == len(errors)
+    assert document["listing_errors"] == (
+        [{"symbol": "ETHUSDT", "error": "listing-payload-39"}] if errors else []
+    )
+    if dry_run:
+        assert document == {
+            "command": "download",
+            "dry_run": True,
+            "summary": {
+                "total_remote": skipped,
+                "skipped": skipped,
+                "to_download": 0,
+                "listing_failed_symbols": len(errors),
+            },
+            "to_download": [],
+            "listing_errors": document["listing_errors"],
+        }
+    else:
+        assert document == {
+            "command": "download",
+            "dry_run": False,
+            "summary": {
+                "total_remote": skipped + downloaded + failed,
+                "skipped": skipped,
+                "downloaded": downloaded,
+                "failed": failed,
+                "listing_failed_symbols": len(errors),
+            },
+            "failed_paths": [str(tmp_path / "relative-home/failed.zip")] if failed else [],
+            "listing_errors": document["listing_errors"],
+        }
+    assert "download-log-payload-39" in result.stderr
+    assert "download-progress-39" in result.stderr
+    if errors:
+        assert "ETHUSDT" in result.stderr
+        assert "listing-payload-39" in result.stderr
+
+
+@pytest.mark.parametrize("json_output", [True, False])
+def test_cli_download_child_output_routing(
+    monkeypatch, tmp_path, sample_archive_files, capfd, json_output
+) -> None:
+    """A real controlled child cannot contaminate JSON stdout, even with progress."""
+    executable = tmp_path / "aria2c"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "print('child-stdout-payload-39', flush=True)\n"
+        "print('child-stderr-payload-39', file=sys.stderr, flush=True)\n"
+        "lines = Path(sys.argv[sys.argv.index('-i') + 1]).read_text().splitlines()\n"
+        "for url, directory in zip(lines[::2], lines[1::2]):\n"
+        "    (Path(directory.strip().removeprefix('dir=')) / url.rsplit('/', 1)[1]).write_bytes(b'data')\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    monkeypatch.setattr("shutil.which", lambda name: str(executable))
+
+    async def fake_listing(self, *args, **kwargs):
+        return {"BTCUSDT": (sample_archive_files, None)}
+
+    monkeypatch.setattr(
+        "binance_datatool.archive.ArchiveClient.list_symbol_files_batch", fake_listing
+    )
+    result = runner.invoke(
+        app,
+        [
+            "-vv",
+            "--archive-home",
+            str(tmp_path / "home"),
+            "download",
+            "um",
+            "--freq",
+            "monthly",
+            "--type",
+            "fundingRate",
+            "--progress-bar",
+            *(["--json"] if json_output else []),
+            "BTCUSDT",
+        ],
+    )
+    child_output = capfd.readouterr()
+    assert result.exit_code == 0, result.exception
+    if json_output:
+        document = json.loads(result.stdout)
+        assert document["summary"] == {
+            "total_remote": 2,
+            "skipped": 0,
+            "downloaded": 2,
+            "failed": 0,
+            "listing_failed_symbols": 0,
+        }
+        assert document["failed_paths"] == []
+        assert child_output.out == ""
+        assert "child-stdout-payload-39" in result.stderr
+    else:
+        assert result.stdout == ""
+        assert "child-stdout-payload-39" in child_output.out
+    assert "child-stderr-payload-39" in child_output.err
+    assert result.stderr.strip()
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--archive-home", "/tmp/home", "download", "um", "BTCUSDT", "--json"],
+        ["download", "um", "--type", "fundingRate", "BTCUSDT", "--json"],
+        ["--archive-home", "/tmp/home", "download", "um", "--type", "fundingRate", "--json"],
+    ],
+)
+def test_cli_download_json_pre_result_errors(monkeypatch, no_workflow_execution, arguments) -> None:
+    """Invalid arguments and missing configuration have no JSON result envelope."""
+    monkeypatch.delenv("BINANCE_DATATOOL_ARCHIVE_HOME", raising=False)
+    result = runner.invoke(app, arguments)
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert result.stderr.strip()
+
+
+def test_cli_download_json_unhandled_error_has_no_result(monkeypatch) -> None:
+    """Exceptions without a workflow result retain their existing failure boundary."""
+
+    async def fake_run(self):
+        raise RuntimeError("workflow-exception-payload-39")
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveDownloadWorkflow.run", fake_run)
+    result = runner.invoke(
+        app,
+        [
+            "--archive-home",
+            "/tmp/home",
+            "download",
+            "um",
+            "--type",
+            "fundingRate",
+            "--json",
+            "BTCUSDT",
+        ],
+    )
+    assert result.exit_code == 1
+    assert isinstance(result.exception, RuntimeError)
+    assert str(result.exception) == "workflow-exception-payload-39"
+    assert result.stdout == ""

@@ -300,6 +300,9 @@ async def test_archive_download_workflow_builds_new_updated_and_skipped_diff(tmp
         (remote_new.key, "new"),
         (remote_updated.key, "updated"),
     ]
+    assert not (tmp_path / remote_new.key).exists()
+    assert updated_local.read_text(encoding="utf-8") == "old checksum"
+    assert skipped_local.read_bytes() == b"x" * 100
 
 
 @pytest.mark.asyncio
@@ -634,6 +637,7 @@ async def test_archive_download_workflow_returns_listing_failures_and_download_c
 
     assert result.downloaded == 0
     assert result.failed == 1
+    assert result.failed_paths == [tmp_path / "missing-home" / remote_file.key]
     assert result.listing_failed_symbols == 1
     assert result.listing_errors[0].symbol == "ETHUSDT"
     assert (tmp_path / "missing-home").exists()
@@ -989,3 +993,66 @@ async def test_archive_download_workflow_sets_aria2_concurrency(
     assert result.downloaded == 2
     assert result.failed == 0
     assert commands and all(f"-j{concurrency}" in cmd for cmd in commands)
+
+
+@pytest.mark.asyncio
+async def test_archive_download_no_work_retains_empty_failures(tmp_path) -> None:
+    """An empty returned download has no final failed paths or local writes."""
+    home = tmp_path / "missing-home"
+    workflow = ArchiveDownloadWorkflow(
+        trade_type=TradeType.um,
+        data_freq=DataFrequency.monthly,
+        data_type=DataType.funding_rate,
+        symbols=["BTCUSDT"],
+        archive_home=home,
+        client=FakeArchiveClient(),
+    )
+    result = await workflow.run()
+    assert result.failed_paths == []
+    assert result.total_remote == result.skipped == result.downloaded == result.failed == 0
+    assert not home.exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("retry_succeeds", [False, True])
+async def test_archive_download_retains_only_final_retry_failures(
+    monkeypatch, tmp_path, sample_archive_files, retry_succeeds
+) -> None:
+    """ZIP/checksum transfers preserve only exhausted failures through aggregation."""
+    attempts = []
+    monkeypatch.setattr("shutil.which", lambda name: "/controlled/aria2c")
+
+    def fake_run(cmd, **kwargs):
+        lines = Path(cmd[cmd.index("-i") + 1]).read_text().splitlines()
+        attempts.append(lines[::2])
+        for url, directory in zip(lines[::2], lines[1::2], strict=True):
+            if url.endswith(".zip") or (retry_succeeds and len(attempts) > 1):
+                target = Path(directory.strip().removeprefix("dir=")) / url.rsplit("/", 1)[1]
+                target.write_bytes(b"complete")
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    workflow = ArchiveDownloadWorkflow(
+        trade_type=TradeType.um,
+        data_freq=DataFrequency.monthly,
+        data_type=DataType.funding_rate,
+        symbols=["BTCUSDT", "ETHUSDT"],
+        archive_home=tmp_path,
+        client=FakeArchiveClient(
+            files_by_symbol={"BTCUSDT": sample_archive_files},
+            errors_by_symbol={"ETHUSDT": aiohttp.ClientError("listing-retry-payload-39")},
+        ),
+    )
+    result = await workflow.run()
+    assert result.total_remote == 2
+    assert result.skipped == 0
+    assert result.downloaded == (2 if retry_succeeds else 1)
+    assert result.failed == (0 if retry_succeeds else 1)
+    assert result.failed_paths == (
+        [] if retry_succeeds else [tmp_path / sample_archive_files[1].key]
+    )
+    assert result.listing_failed_symbols == 1
+    assert result.listing_errors[0].error == "listing-retry-payload-39"
+    assert len(attempts) == (2 if retry_succeeds else 3)
+    assert len(attempts[0]) == 2
+    assert all(len(batch) == 1 and batch[0].endswith(".CHECKSUM") for batch in attempts[1:])

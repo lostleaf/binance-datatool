@@ -197,5 +197,6 @@ class ArchiveDownloadWorkflow:
             skipped=diff_result.skipped,
             downloaded=aria2_result.succeeded,
             failed=len(aria2_result.failed_requests),
+            failed_paths=[request.local_path for request in aria2_result.failed_requests],
             listing_errors=diff_result.listing_errors,
         )

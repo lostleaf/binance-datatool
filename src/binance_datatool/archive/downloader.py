@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -100,6 +101,7 @@ def _run_batch(
     *,
     inherit_proxy: bool,
     concurrency: int,
+    stdout_to_stderr: bool,
 ) -> int:
     """Run aria2 for a single batch and return its exit code."""
     input_file_path = _write_input_file(requests)
@@ -114,11 +116,15 @@ def _run_batch(
             "--allow-overwrite=true",
             "--auto-file-renaming=false",
         ]
+        output_options = {"stdout": subprocess.PIPE, "text": True} if stdout_to_stderr else {}
         completed = subprocess.run(
             cmd,
             check=False,
             env=_build_env(inherit_proxy=inherit_proxy),
+            **output_options,
         )
+        if stdout_to_stderr:
+            sys.stderr.write(completed.stdout)
     finally:
         input_file_path.unlink(missing_ok=True)
 
@@ -152,6 +158,7 @@ def download_archive_files(
     concurrency: int = 64,
     max_tries: int = 3,
     progress_bar: bool = False,
+    stdout_to_stderr: bool = False,
 ) -> Aria2DownloadResult:
     """Download requests with aria2 using per-file retry semantics.
 
@@ -162,6 +169,7 @@ def download_archive_files(
         batch_size: Number of files per aria2 batch, capped at 512 for progress.
         max_tries: Maximum retry rounds for failed batches.
         progress_bar: Whether to render an interactive tqdm progress bar.
+        stdout_to_stderr: Forward child stdout to stderr after each batch, keeping stdout clean.
 
     Returns:
         Aggregated aria2 result.
@@ -191,7 +199,11 @@ def download_archive_files(
             for batch_index, batch in enumerate(batches, start=1):
                 batch_label = f"batch {batch_index}/{len(batches)}"
                 returncode = _run_batch(
-                    executable, batch, inherit_proxy=inherit_proxy, concurrency=concurrency
+                    executable,
+                    batch,
+                    inherit_proxy=inherit_proxy,
+                    concurrency=concurrency,
+                    stdout_to_stderr=stdout_to_stderr,
                 )
 
                 if returncode == 0:
