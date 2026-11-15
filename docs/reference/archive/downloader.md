@@ -43,9 +43,11 @@ result = download_archive_files(
 | `concurrency` | `64` | Concurrent aria2 downloads (`-j`). Must be at least 1. |
 | `max_tries` | `3` | Maximum retry rounds for incomplete files. |
 | `progress_bar` | `False` | When `True`, display an interactive tqdm progress bar on stderr via the shared progress-reporting framework. When `False`, emit sampled log lines at INFO level. See [`common.progress`](../common/progress.md). |
-| `stdout_to_stderr` | `False` | When `True`, capture child stdout and forward it to stderr after each batch. The JSON CLI selects this through the existing download callable injection. The default retains inherited subprocess stdout. |
+| `stdout_to_stderr` | `False` | When `True`, capture child stdout and forward it to stderr after each batch. The JSON CLI selects this through the workflow output-routing option. The default retains inherited subprocess stdout. |
 
 Returns an `Aria2DownloadResult`. Invalid `concurrency` or `batch_size` raises `ValueError`.
+A nonempty request sequence resolves `aria2c` before creating directories or input files;
+unavailable tooling raises `Aria2NotFoundError`. An empty sequence does not require aria2.
 
 Every completed batch emits progress: one success event, or separate success/failure
 events for a partial batch. Download logs use `log_interval=1` so large totals cannot
@@ -63,6 +65,24 @@ considered complete when it exists on disk and has no leftover `.aria2`
 control file (which indicates a partial download). Only files that are
 still missing or incomplete are retried in subsequent rounds. This avoids
 re-downloading already-completed files within a batch that partially failed.
+
+## `prepare_archive_downloader()`
+
+```python
+from binance_datatool.archive import prepare_archive_downloader
+
+# Resolve before making archive changes; execution reuses this executable path.
+download = prepare_archive_downloader(stdout_to_stderr=True)
+result = download(requests, inherit_proxy=False, concurrency=64)
+```
+
+Resolves `aria2c` immediately and returns a callable accepting the same arguments as
+`download_archive_files`. `stdout_to_stderr` defaults to `False` and sets the returned
+callable's default output routing. Missing tooling raises `Aria2NotFoundError` without
+writing to the archive. The workflow prepares only nonempty built-in transfer plans.
+
+Preparation reuses the resolved path during execution. It does not roll back later transfer
+failures or prevent an external process from removing the executable after resolution.
 
 ## `Aria2DownloadResult`
 

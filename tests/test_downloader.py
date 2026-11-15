@@ -323,3 +323,27 @@ def test_download_preserves_failed_counts_after_per_file_retries(monkeypatch, tm
     assert result.requested == 2
     assert result.succeeded == 1
     assert result.failed_requests == requests[1:]
+
+
+@pytest.mark.parametrize("stdout_to_stderr", [False, True])
+def test_standalone_download_routes_child_output(
+    monkeypatch, tmp_path, capsys, stdout_to_stderr
+) -> None:
+    """Standalone callers retain optional child-output routing after backend preparation."""
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/aria2c")
+
+    def fake_run(cmd, **kwargs):
+        if "stdout" not in kwargs:
+            print("standalone-child-output")
+        return SimpleNamespace(returncode=0, stdout="standalone-child-output\n")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    result = download_archive_files(
+        [DownloadRequest(url="https://example.com/a.zip", local_path=tmp_path / "a.zip")],
+        inherit_proxy=False,
+        stdout_to_stderr=stdout_to_stderr,
+    )
+    output = capsys.readouterr()
+    assert result.succeeded == 1
+    assert output.out == ("" if stdout_to_stderr else "standalone-child-output\n")
+    assert ("standalone-child-output" in output.err) is stdout_to_stderr

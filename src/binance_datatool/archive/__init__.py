@@ -17,6 +17,7 @@ from binance_datatool.archive.downloader import (
     Aria2NotFoundError,
     DownloadRequest,
     download_archive_files,
+    prepare_archive_downloader,
 )
 from binance_datatool.archive.symbol_dir import (
     SymbolArchiveDir,
@@ -36,6 +37,7 @@ __all__ = [
     "create_symbol_archive_dir",
     "download_archive_files",
     "list_symbols",
+    "prepare_archive_downloader",
     "read_expected_checksum",
     "verify_single_file",
 ]

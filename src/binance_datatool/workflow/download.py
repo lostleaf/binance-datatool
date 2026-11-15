@@ -12,7 +12,7 @@ from binance_datatool.archive import (
     ArchiveClient,
     DownloadRequest,
     SymbolArchiveDir,
-    download_archive_files,
+    prepare_archive_downloader,
 )
 
 from .list_files import ArchiveListFilesWorkflow
@@ -44,6 +44,7 @@ class ArchiveDownloadWorkflow:
         client: ArchiveClient | None = None,
         download_func: Callable[..., Aria2DownloadResult] | None = None,
         concurrency: int = 64,
+        stdout_to_stderr: bool = False,
     ) -> None:
         """Initialize the download workflow.
 
@@ -59,7 +60,8 @@ class ArchiveDownloadWorkflow:
             concurrency: Number of concurrent aria2 downloads.
             progress_bar: Whether to display a tqdm progress bar on stderr.
             client: Optional pre-configured archive client.
-            download_func: Optional download callable for dependency injection.
+            download_func: Optional alternate download callable; skips built-in preparation.
+            stdout_to_stderr: Route built-in downloader child stdout to stderr.
         """
         if concurrency < 1:
             raise ValueError("concurrency must be at least 1")
@@ -74,7 +76,8 @@ class ArchiveDownloadWorkflow:
         self.inherit_aria2_proxy = inherit_aria2_proxy
         self.progress_bar = progress_bar
         self.client = client or ArchiveClient()
-        self.download_func = download_func or download_archive_files
+        self.download_func = download_func
+        self.stdout_to_stderr = stdout_to_stderr
 
     def _build_diff_result(self, list_result: ListFilesResult) -> DiffResult:
         """Compute the download diff from remote file listings."""
@@ -175,6 +178,10 @@ class ArchiveDownloadWorkflow:
                 listing_errors=diff_result.listing_errors,
             )
 
+        download_func = self.download_func
+        if download_func is None:
+            download_func = prepare_archive_downloader(stdout_to_stderr=self.stdout_to_stderr)
+
         self.archive_home.mkdir(parents=True, exist_ok=True)
         self._invalidate_verified_markers(diff_result.to_download)
         self._delete_updated_files(diff_result.to_download)
@@ -185,7 +192,7 @@ class ArchiveDownloadWorkflow:
         ]
 
         logger.info("downloading {} file(s)", len(requests))
-        aria2_result = self.download_func(
+        aria2_result = download_func(
             requests,
             inherit_proxy=self.inherit_aria2_proxy,
             concurrency=self.concurrency,

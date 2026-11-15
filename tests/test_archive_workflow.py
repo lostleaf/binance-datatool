@@ -16,6 +16,7 @@ from binance_datatool.archive import (
     ArchiveClient,
     ArchiveFile,
     Aria2DownloadResult,
+    Aria2NotFoundError,
     SymbolArchiveDir,
 )
 from binance_datatool.common import (
@@ -1083,3 +1084,143 @@ async def test_archive_download_retains_only_final_retry_failures(
     assert len(attempts) == (2 if retry_succeeds else 3)
     assert len(attempts[0]) == 2
     assert all(len(batch) == 1 and batch[0].endswith(".CHECKSUM") for batch in attempts[1:])
+
+
+@pytest.mark.parametrize("replacement", ["zip", "checksum"])
+async def test_archive_download_missing_aria2_preserves_replacement_archive(
+    monkeypatch, tmp_path, sample_archive_files, replacement
+) -> None:
+    """Unavailable tooling preserves both replacement objects and verification state."""
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    paths = [tmp_path / file.key for file in sample_archive_files]
+    paths[0].parent.mkdir(parents=True)
+    for path in paths:
+        path.write_bytes(b"original")
+    target = paths[replacement == "checksum"]
+    control = target.with_name(target.name + ".aria2")
+    control.write_bytes(b"unfinished-transfer")
+    marker = paths[0].with_name(paths[0].name + ".verified")
+    marker.write_bytes(b"verified-state")
+    before = {
+        path.relative_to(tmp_path): path.read_bytes() if path.is_file() else None
+        for path in tmp_path.rglob("*")
+    }
+    workflow = ArchiveDownloadWorkflow(
+        trade_type=TradeType.um,
+        data_freq=DataFrequency.monthly,
+        data_type=DataType.funding_rate,
+        symbols=["BTCUSDT"],
+        archive_home=tmp_path,
+        client=FakeArchiveClient(
+            files_by_symbol={"BTCUSDT": [sample_archive_files[replacement == "checksum"]]}
+        ),
+    )
+    with pytest.raises(Aria2NotFoundError):
+        await workflow.run()
+    assert {
+        path.relative_to(tmp_path): path.read_bytes() if path.is_file() else None
+        for path in tmp_path.rglob("*")
+    } == before
+
+
+async def test_archive_download_missing_aria2_creates_no_archive(
+    monkeypatch, tmp_path, sample_archive_files
+) -> None:
+    """A new-object plan fails before creating the Archive home or nested directories."""
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    home = tmp_path / "missing-home"
+    workflow = ArchiveDownloadWorkflow(
+        trade_type=TradeType.um,
+        data_freq=DataFrequency.monthly,
+        data_type=DataType.funding_rate,
+        symbols=["BTCUSDT"],
+        archive_home=home,
+        client=FakeArchiveClient(files_by_symbol={"BTCUSDT": sample_archive_files}),
+    )
+    with pytest.raises(Aria2NotFoundError):
+        await workflow.run()
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "scenario", ["dry-run", "empty", "up-to-date", "listing-error", "alternate"]
+)
+async def test_archive_download_does_not_require_unused_backend(
+    monkeypatch, tmp_path, sample_archive_files, scenario
+) -> None:
+    """Inspection, no transfers, and alternate downloaders have no aria2 dependency."""
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    home = tmp_path / "home"
+    files = [] if scenario in {"empty", "listing-error"} else sample_archive_files
+    if scenario == "up-to-date":
+        for file in files:
+            path = home / file.key
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"x" * file.size)
+            timestamp = file.last_modified.timestamp() + 1
+            os.utime(path, (timestamp, timestamp))
+
+    def alternate_download(requests, *, inherit_proxy, concurrency, progress_bar):
+        for request in requests:
+            request.local_path.parent.mkdir(parents=True, exist_ok=True)
+            request.local_path.write_bytes(b"alternate-download")
+        return Aria2DownloadResult(requested=len(requests), failed_requests=[])
+
+    workflow = ArchiveDownloadWorkflow(
+        trade_type=TradeType.um,
+        data_freq=DataFrequency.monthly,
+        data_type=DataType.funding_rate,
+        symbols=["BTCUSDT"],
+        archive_home=home,
+        dry_run=scenario == "dry-run",
+        client=FakeArchiveClient(
+            files_by_symbol={"BTCUSDT": files},
+            errors_by_symbol={"BTCUSDT": RuntimeError("listing-unavailable")}
+            if scenario == "listing-error"
+            else None,
+        ),
+        download_func=alternate_download if scenario == "alternate" else None,
+    )
+    result = await workflow.run()
+    if scenario == "dry-run":
+        assert len(result.to_download) == 2
+    else:
+        assert result.downloaded == (2 if scenario == "alternate" else 0)
+        assert result.failed == 0
+        assert result.skipped == (2 if scenario == "up-to-date" else 0)
+        assert result.listing_failed_symbols == (1 if scenario == "listing-error" else 0)
+        if scenario == "listing-error":
+            assert result.listing_errors[0].symbol == "BTCUSDT"
+            assert result.listing_errors[0].error == "listing-unavailable"
+    if scenario not in {"up-to-date", "alternate"}:
+        assert not home.exists()
+
+
+async def test_archive_download_reuses_prepared_executable_after_replacement(
+    monkeypatch, tmp_path, sample_archive_files
+) -> None:
+    """Execution retains the resolved tool after replacing an outdated local object."""
+    local = tmp_path / sample_archive_files[0].key
+    local.parent.mkdir(parents=True)
+    local.write_bytes(b"outdated")
+    monkeypatch.setattr("shutil.which", lambda name: "/prepared/aria2c" if local.exists() else None)
+
+    def fake_run(cmd, **kwargs):
+        assert cmd[0] == "/prepared/aria2c"
+        assert not local.exists()
+        local.write_bytes(b"replacement")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    workflow = ArchiveDownloadWorkflow(
+        trade_type=TradeType.um,
+        data_freq=DataFrequency.monthly,
+        data_type=DataType.funding_rate,
+        symbols=["BTCUSDT"],
+        archive_home=tmp_path,
+        client=FakeArchiveClient(files_by_symbol={"BTCUSDT": sample_archive_files[:1]}),
+    )
+    result = await workflow.run()
+    assert result.downloaded == 1
+    assert result.failed == 0
+    assert local.read_bytes() == b"replacement"

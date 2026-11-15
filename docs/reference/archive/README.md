@@ -33,7 +33,7 @@ details.
 | Source module | Re-exported names |
 |---------------|-------------------|
 | [`client`](client.md) | `ArchiveClient`, `ArchiveFile`, `SymbolListingResult`, `list_symbols` |
-| [`downloader`](downloader.md) | `DownloadRequest`, `Aria2DownloadResult`, `Aria2NotFoundError`, `download_archive_files` |
+| [`downloader`](downloader.md) | `DownloadRequest`, `Aria2DownloadResult`, `Aria2NotFoundError`, `download_archive_files`, `prepare_archive_downloader` |
 | [`checksum`](checksum.md) | `VerifyFileResult`, `calc_sha256`, `read_expected_checksum`, `verify_single_file` |
 | [`symbol_dir`](symbol_dir.md) | `SymbolArchiveDir`, `create_symbol_archive_dir` |
 

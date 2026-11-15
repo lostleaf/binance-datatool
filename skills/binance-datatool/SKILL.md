@@ -56,7 +56,8 @@ Before running any command, ensure three things are in place:
    ```bash
    export BINANCE_DATATOOL_ARCHIVE_HOME="$HOME/crypto_data/binance_archive"
    ```
-3. **aria2 installed** — required by the `download` command for parallel, resumable downloads.
+3. **aria2 installed** — required when a real `download` run has objects to transfer.
+   Dry-runs and empty transfer plans need no aria2.
    - macOS: `brew install aria2`
    - Ubuntu/Debian: `sudo apt install aria2`
 
@@ -245,6 +246,13 @@ Real runs always print download stats on stderr (downloaded/failed/skipped count
 With `-v` or `--progress-bar`, download progress advances after each batch of at most
 512 files, including retry rounds. Invalid concurrency exits `2`.
 
+The command lists remote objects and compares local files before checking aria2 availability.
+For a nonempty transfer plan, unavailable `aria2c` leaves local objects, verification markers,
+control files, and directories intact. Text and JSON modes print installation guidance to
+stderr and exit `2` with empty stdout and no traceback. Treat empty stdout as no workflow
+result; JSON mode emits no error envelope. After preparation succeeds, later transfer failures
+retain existing replacement and retry behavior, with no rollback.
+
 With `--json`, both modes include `listing_errors`: records with `symbol` and the non-empty
 `error` text, using the same exception-message fallback as `list-files`.
 `summary.listing_failed_symbols` equals its length, separately from transfer
@@ -389,8 +397,8 @@ binance-datatool -v verify um \
   fetched, especially for broad queries like all USDT symbols.
 - **Reuse symbol lists.** Save `list-symbols` output to a file and pipe it into both `download`
   and `verify` to keep the symbol set consistent across steps.
-- **Check exit codes.** Exit code 2 means partial failure — some symbols succeeded while others
-  failed. Review stderr for details.
+- **Check exit codes.** Exit code 2 can report listing or transfer failures, invalid arguments,
+  missing configuration, or unavailable download tooling. Review stderr for details.
 - **Frequency matters.** Some data types are only available at specific frequencies. For example,
   futures `fundingRate` typically requires `--freq monthly`. If `list-files` returns nothing,
   try switching the frequency.

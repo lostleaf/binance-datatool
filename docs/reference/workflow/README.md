@@ -190,7 +190,8 @@ result = await workflow.run()
 | `concurrency` | `64` | Concurrent aria2 downloads. Values below 1 raise `ValueError`. |
 | `progress_bar` | `False` | When `True`, display an interactive tqdm progress bar on stderr. When `False`, emit sampled log lines at INFO level. See [`common.progress`](../common/progress.md). |
 | `client` | `None` | Optional pre-configured `ArchiveClient`. |
-| `download_func` | `None` | Optional download callable for dependency injection. Receives `requests`, `inherit_proxy`, `concurrency`, and `progress_bar`. Defaults to `download_archive_files`. |
+| `download_func` | `None` | Optional alternate download callable. Receives `requests`, `inherit_proxy`, `concurrency`, and `progress_bar`; needs no aria2 preparation. `None` selects the built-in backend. |
+| `stdout_to_stderr` | `False` | Route built-in downloader child stdout to stderr after each batch. The JSON CLI enables this. Alternate callables retain their own output handling. |
 
 ### Download comparison
 
@@ -206,13 +207,22 @@ async def run(self) -> DiffResult | DownloadResult
    `local_mtime >= remote_last_modified`; otherwise it is classified as `"new"`
    or `"updated"`.
 3. In dry-run mode, returns a `DiffResult` immediately.
-4. Otherwise, invalidates stale `.verified` markers for updated zip/checksum files,
-   deletes stale local copies of updated files, then downloads via
-   `download_archive_files` with per-file retry and optional progress reporting.
+4. An empty transfer plan returns a `DownloadResult` without requiring aria2, retaining
+   any listing errors. For a nonempty built-in plan, prepares the downloader by resolving
+   `aria2c` before creating archive directories, clearing markers, or deleting objects.
+5. After preparation succeeds, invalidates stale `.verified` markers for updated
+   ZIP/checksum files, deletes stale local copies of updated files, then executes the
+   prepared downloader with per-file retry and optional progress reporting.
 
 Returns `DiffResult` when `dry_run=True`, otherwise `DownloadResult`. All file counts
 refer to individual archive objects, including ZIP and checksum files. Successful transfer
 and download skips do not establish SHA256 verification.
+
+An unavailable built-in backend raises `Aria2NotFoundError` before any archive mutation.
+Dry-runs, empty transfer plans (including listing failures only), and alternate download
+callables require no aria2. Preparation retains the resolved executable for execution; it
+provides no rollback for later transfer failures or protection against external executable
+removal after preparation.
 
 ## `DiffEntry`
 

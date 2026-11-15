@@ -8,13 +8,14 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from binance_datatool.common.progress import ProgressEvent, make_reporter
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 PROXY_ENV_VARS = (
     "http_proxy",
@@ -174,6 +175,50 @@ def download_archive_files(
     Returns:
         Aggregated aria2 result.
     """
+    return _download_archive_files(
+        requests,
+        inherit_proxy=inherit_proxy,
+        batch_size=batch_size,
+        concurrency=concurrency,
+        max_tries=max_tries,
+        progress_bar=progress_bar,
+        stdout_to_stderr=stdout_to_stderr,
+    )
+
+
+def prepare_archive_downloader(
+    *, stdout_to_stderr: bool = False
+) -> Callable[..., Aria2DownloadResult]:
+    """Resolve aria2 before archive mutations and return a ready download callable.
+
+    Args:
+        stdout_to_stderr: Forward child stdout to stderr after each batch.
+
+    Returns:
+        Download callable with the same arguments as ``download_archive_files``.
+
+    Raises:
+        Aria2NotFoundError: If aria2c is unavailable in PATH.
+    """
+    return partial(
+        _download_archive_files,
+        executable=_find_aria2c(),
+        stdout_to_stderr=stdout_to_stderr,
+    )
+
+
+def _download_archive_files(
+    requests: Sequence[DownloadRequest],
+    *,
+    inherit_proxy: bool,
+    batch_size: int = 512,
+    concurrency: int = 64,
+    max_tries: int = 3,
+    progress_bar: bool = False,
+    stdout_to_stderr: bool = False,
+    executable: str | None = None,
+) -> Aria2DownloadResult:
+    """Execute requests using a prepared executable or resolve one for standalone calls."""
     if concurrency < 1:
         raise ValueError("concurrency must be at least 1")
     if batch_size < 1:
@@ -182,7 +227,8 @@ def download_archive_files(
     if not requests:
         return Aria2DownloadResult(requested=0, failed_requests=[])
 
-    executable = _find_aria2c()
+    if executable is None:
+        executable = _find_aria2c()
     pending: list[DownloadRequest] = list(requests)
 
     for attempt in range(1, max_tries + 1):

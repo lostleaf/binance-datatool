@@ -326,7 +326,12 @@ binance-datatool [--archive-home PATH] download <TRADE_TYPE> [SYMBOLS...]
 ```
 
 Downloads new or updated archive files into the local archive data directory.
-Requires `aria2c` to be available in `PATH`.
+Requires `aria2c` in `PATH` when a real run has objects to transfer. Remote listing and
+local comparison happen first; dry-runs and empty transfer plans need no aria2. Missing
+tooling is detected before creating archive directories, clearing verification markers,
+or deleting replacement objects. Both text and JSON modes print installation guidance to
+stderr, leave stdout empty, and exit `2` without a traceback. No workflow result exists in
+this case, so JSON mode emits no result document.
 
 | Argument / Option | Type | Default | Description |
 |-------------------|------|---------|-------------|
@@ -432,6 +437,7 @@ its proportional sampling.
 | All files downloaded successfully | `0` |
 | Any symbol listing failed | `2` |
 | Any download failed | `2` |
+| aria2c unavailable for a nonempty transfer plan | `2` |
 | BINANCE_DATATOOL_ARCHIVE_HOME not configured | `2` |
 | Argument validation error | `2` |
 
@@ -471,8 +477,8 @@ User runs:
   │  Delegates to ArchiveListFilesWorkflow for remote    │
   │  listing; computes diff (new/updated/skipped) using  │
   │  local size, aria2 state, and timestamps;            │
-  │  invalidates stale .verified markers; deletes stale  │
-  │  local copies; invokes aria2 downloader with retry.  │
+  │  prepares aria2; clears stale .verified markers;     │
+  │  deletes stale local copies; downloads with retry.   │
   └──────────────────────┬───────────────────────────────┘
                          │
           ┌──────────────┴──────────────┐

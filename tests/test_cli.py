@@ -2660,3 +2660,47 @@ def test_cli_verify_json_unhandled_error_has_no_result(monkeypatch) -> None:
     assert isinstance(result.exception, RuntimeError)
     assert str(result.exception) == "verify-exception-payload-42"
     assert result.stdout == ""
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+def test_cli_download_missing_aria2_preserves_archive(
+    monkeypatch, tmp_path, sample_archive_files, json_output
+) -> None:
+    """Real workflow preparation reports missing tooling cleanly in both output modes."""
+    home = tmp_path / "home"
+    local = home / sample_archive_files[0].key
+    local.parent.mkdir(parents=True)
+    local.write_bytes(b"original-archive")
+    marker = local.with_name(local.name + ".verified")
+    marker.write_bytes(b"verified-state")
+    monkeypatch.setattr("shutil.which", lambda name: None)
+
+    async def fake_listing(self, *args, **kwargs):
+        return {"BTCUSDT": (sample_archive_files, None)}
+
+    monkeypatch.setattr(
+        "binance_datatool.archive.ArchiveClient.list_symbol_files_batch", fake_listing
+    )
+    result = runner.invoke(
+        app,
+        [
+            "--archive-home",
+            str(home),
+            "download",
+            "um",
+            "--freq",
+            "monthly",
+            "--type",
+            "fundingRate",
+            *(["--json"] if json_output else []),
+            "BTCUSDT",
+        ],
+    )
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert "aria2c" in result.stderr
+    assert "PATH" in result.stderr
+    assert "Traceback" not in result.output
+    assert local.read_bytes() == b"original-archive"
+    assert marker.read_bytes() == b"verified-state"
+    assert not (home / sample_archive_files[1].key).exists()

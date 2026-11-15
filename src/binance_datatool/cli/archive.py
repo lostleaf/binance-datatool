@@ -6,13 +6,12 @@ import asyncio
 import sys
 from dataclasses import asdict
 from datetime import UTC
-from functools import partial
 from typing import TYPE_CHECKING, Annotated, TypeAlias
 
 import typer
 from loguru import logger
 
-from binance_datatool.archive import download_archive_files
+from binance_datatool.archive import Aria2NotFoundError
 from binance_datatool.cli import app
 from binance_datatool.cli.output import JsonOutputOption, absolute_path, emit_json
 from binance_datatool.common import (
@@ -416,11 +415,13 @@ def download_command(
         inherit_aria2_proxy=aria2_proxy,
         concurrency=concurrency,
         progress_bar=progress_bar,
-        download_func=partial(download_archive_files, stdout_to_stderr=True)
-        if json_output
-        else None,
+        stdout_to_stderr=json_output,
     )
-    result = asyncio.run(workflow.run())
+    try:
+        result = asyncio.run(workflow.run())
+    except Aria2NotFoundError as exc:
+        typer.echo(f"Error: {exc} Install aria2 and ensure aria2c is in PATH.", err=True)
+        raise typer.Exit(code=2) from exc
 
     if json_output:
         listing_errors = [
