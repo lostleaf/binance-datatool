@@ -5,9 +5,10 @@ Domain terms are defined in the [glossary](../../../GLOSSARY.md).
 
 ## Structured JSON results
 
-`download` accepts `--json` in real and dry-run modes. Each returned workflow result emits
-exactly one JSON document on stdout, including empty plans, no-work runs, and partial or
-all-symbol listing failures. Logs, progress, existing summaries, and diagnostic payloads
+`download` accepts `--json` in real and dry-run modes; `list-files` accepts `--json` for
+remote listings. Each returned workflow result emits exactly one JSON document on stdout,
+including empty results, no-work runs, and partial or all-symbol listing failures.
+Logs, progress, existing summaries, and diagnostic payloads
 remain on stderr, including aria2 subprocess output. Output without `--json` is unchanged.
 
 The common envelope contains `command` (the CLI command name), `dry_run` (boolean), and
@@ -96,7 +97,7 @@ binance-datatool list-files <TRADE_TYPE> [SYMBOLS...]
     [--freq FREQ] [--type TYPE] [--interval INTERVAL]
     [-l | --long]
     [--only-zip | --only-checksum]
-    [--progress-bar]
+    [--progress-bar] [--json]
 ```
 
 Lists every file under one or more symbol directories on `data.binance.vision`,
@@ -113,6 +114,7 @@ preserving the caller-provided symbol order.
 | `--only-zip` | `bool` | `False` | Print only `.zip` files. Mutually exclusive with `--only-checksum`. |
 | `--only-checksum` | `bool` | `False` | Print only `.zip.CHECKSUM` files. Mutually exclusive with `--only-zip`. |
 | `--progress-bar` | `bool` | `False` | Show interactive tqdm progress bar on stderr. By default no interactive progress is shown; sampled log lines at INFO level are emitted instead. See [`common.progress`](../common/progress.md). |
+| `--json` | `bool` | `False` | Emit remote metadata in one structured result. Accepts `--long`, which has no effect on JSON fields. |
 
 ### Symbol input resolution
 
@@ -123,7 +125,8 @@ preserving the caller-provided symbol order.
 | No positional args and stdin is a tty | Raise `typer.BadParameter` → exit 2. |
 
 Every resolved symbol is stripped and uppercased before the workflow sees it, so
-`btcusdt` and `BTCUSDT` behave identically.
+`btcusdt` and `BTCUSDT` behave identically. Repeated normalized symbols collapse to one
+result record, preserving the order of their first occurrence.
 
 ### Output formats
 
@@ -164,6 +167,43 @@ If every requested symbol is listed successfully but no files are found, the
 command still exits `0` and prints a warning to stderr. Treat that warning as a
 hint to verify the upstream directory layout on `data.binance.vision` for the
 selected market, frequency, and data type rather than as a local runtime error.
+
+### JSON output
+
+With `--json`, the envelope uses `command: "list-files"` and `dry_run: false`. This command
+has no dry-run option and needs no Archive home configuration. The required `per_symbol`
+array retains workflow symbol order and file order. Each symbol record contains:
+
+| Field | Meaning |
+|-------|---------|
+| `symbol` | Normalized symbol name. |
+| `files` | Array of objects with `url`, integer byte `size`, and `last_modified`. |
+| `error` | `null` for a successful listing, including an empty directory; original workflow error text for a failed listing. Failed listings have empty `files`. |
+
+`url` combines the existing download base `https://data.binance.vision` with the complete
+object key, for example
+`https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-03.zip`.
+There is no local or relative-path field. `last_modified` is UTC ISO 8601 at second precision,
+ending in `Z`, such as `2026-04-01T08:06:34Z`.
+
+`--only-zip` and `--only-checksum` select files using the same rules as text mode; together
+they remain invalid. A symbol record remains present when all its files are filtered out.
+The summary contains:
+
+| Field | Meaning |
+|-------|---------|
+| `requested_symbols` | Number of workflow symbol records after existing duplicate-input collapse. |
+| `successful_symbols` | Records whose `error` is `null`. |
+| `failed_symbols` | Records with a listing error. |
+| `total_remote_files` | Successfully listed files before output filtering. Failed symbols contribute no invented file counts. |
+| `returned_files` | Sum of emitted file-array lengths after filtering. |
+
+A ZIP/checksum pair with `--only-zip` has `total_remote_files: 2` and `returned_files: 1`.
+Empty-result warnings use the unfiltered workflow result: filtering a nonempty listing to
+zero returned files does not produce a warning. Symbol/error diagnostics remain on stderr.
+JSON is serialized before exit `2` for any listing failure; all other returned results,
+including empty results, exit `0`. Validation and other failures without a result retain
+the shared no-result behavior described above.
 
 ### Exit codes
 

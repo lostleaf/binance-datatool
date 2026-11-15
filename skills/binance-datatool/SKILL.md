@@ -23,12 +23,13 @@ into what the tool is doing (listing symbols, downloading files, verifying check
 for DEBUG-level output when troubleshooting.
 
 All log output goes to stderr. Command results (symbol lists, file paths, dry-run diffs) go to
-stdout. Use `download --json` for a single structured result, including when aria2 writes
-stdout.
+stdout. Use `download --json` or `list-files --json` for a single structured result,
+including when aria2 writes stdout during downloads.
 
 ## JSON results
 
-`download` supports `--json` in real and dry-run modes. Parse the entire stdout as one JSON
+`download` supports `--json` in real and dry-run modes; `list-files` supports it for remote
+listings. Parse the entire stdout as one JSON
 document after a returned result, including exit `2`; logs, progress, diagnostic payloads,
 and existing summaries remain on stderr. No-flag output is unchanged.
 
@@ -150,8 +151,45 @@ binance-datatool -v list-files <TRADE_TYPE> [SYMBOLS...] [OPTIONS]
 | `--only-zip`       | Print only .zip files                               |
 | `--only-checksum`  | Print only .CHECKSUM files                          |
 | `--progress-bar`   | Show progress bar on stderr                         |
+| `--json`           | Emit remote URLs and metadata as one JSON result     |
 
 Output: one path per line, or TSV with `-l`.
+
+With `--json`, the envelope uses `command: "list-files"` and `dry_run: false`. No Archive home
+configuration is needed, and this command has no dry-run option. `--long --json` is accepted;
+`--long` has no effect on JSON fields.
+
+The required `per_symbol` array contains records with `symbol`, `files`, and `error`.
+Each file has `url`, integer byte `size`, and `last_modified` as UTC ISO 8601 at second
+precision ending in `Z`. URLs join `https://data.binance.vision` and the complete object key;
+there are no local or relative-path fields. For example, a URL can be
+`https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-03.zip`.
+Successful listings use `error: null`, including empty directories. Failed listings have
+empty `files` and retain the workflow error text in `error`.
+
+Symbol and file order follow the workflow. Inputs are stripped and uppercased; repeated
+normalized symbols collapse to one record in first-occurrence order. `--only-zip` and
+`--only-checksum` filter file arrays using text-mode selection rules and remain mutually
+exclusive. Keep symbol records whose file arrays become empty. The summary contains:
+
+| Field | Meaning |
+|-------|---------|
+| `requested_symbols` | Number of workflow symbol records after duplicate collapse. |
+| `successful_symbols` | Number of records with null error. |
+| `failed_symbols` | Number of records with a listing error. |
+| `total_remote_files` | Successfully listed files before output filtering. Failed listings contribute no invented file counts. |
+| `returned_files` | Sum of emitted file-array lengths after filtering. |
+
+A ZIP/checksum pair filtered with `--only-zip` has remote total `2` and returned total `1`.
+Empty-result warnings use the unfiltered result, so filtering a nonempty listing to zero
+returned files does not create a warning. Diagnostics retain symbol/error associations on
+stderr. JSON is emitted before exit `2` for any symbol failure; other returned results exit
+`0`, including empty results. Validation failures and other errors without a result may
+leave stdout empty, following the shared JSON contract above.
+
+```bash
+binance-datatool -v list-files um --freq monthly --type fundingRate --only-zip --json BTCUSDT
+```
 
 ### download
 
