@@ -64,9 +64,8 @@ across buckets so unfiltered CLI output can print every directory in archive ord
 
 ## `ArchiveListFilesWorkflow`
 
-Lists archive files for one or more symbols concurrently while preserving caller
-input order and isolating per-symbol failures so that one bad symbol does not abort
-the entire batch.
+Lists archive files for one or more symbols concurrently, isolating per-symbol failures
+so that one bad symbol does not abort the entire batch.
 
 ```python
 from binance_datatool.workflow import (
@@ -90,7 +89,7 @@ result: ListFilesResult = await workflow.run()
 | `trade_type` | *(required)* | Market segment to query. |
 | `data_freq` | *(required)* | Partition frequency. |
 | `data_type` | *(required)* | Dataset type. |
-| `symbols` | *(required)* | Sequence of symbols to list. Caller order is preserved. |
+| `symbols` | *(required)* | Sequence of symbols passed to the client with the caller's original whitespace and casing. |
 | `interval` | `None` | Kline interval directory. Required when `data_type.has_interval_layer` is `True`; must be `None` otherwise. |
 | `progress_bar` | `False` | When `True`, display an interactive tqdm progress bar on stderr via the shared progress-reporting framework. When `False`, emit sampled log lines at INFO level. See [`common.progress`](../common/progress.md). |
 | `client` | `None` | Optional pre-configured `ArchiveClient`. A default client is created when omitted. |
@@ -111,9 +110,12 @@ async def run(self) -> ListFilesResult
    opens a single shared `aiohttp.ClientSession` and concurrently lists every
    symbol via `asyncio.as_completed`.
 2. Wraps each `(files, error)` tuple from the batch result into a
-   `SymbolListFilesResult`, preserving caller input order.
+   `SymbolListFilesResult` in batch dictionary order.
 
-Returns a `ListFilesResult` that always covers every requested symbol.
+The batch dictionary collapses duplicate symbol keys in first-occurrence order, so
+the returned `ListFilesResult` has one entry per distinct input key. The CLI strips
+and uppercases symbols before calling the workflow, so CLI duplicates collapse
+after normalization.
 
 ## `SymbolListFilesResult`
 
@@ -124,7 +126,7 @@ empty directory is represented by `files == []` with `error is None`; this is
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `symbol` | `str` | The symbol this entry describes, normalized to uppercase by the CLI. |
+| `symbol` | `str` | The input symbol key this entry describes. |
 | `files` | `list[ArchiveFile]` | Files found under the symbol directory. Empty on both success-with-empty-directory and failure. |
 | `error` | `str \| None` | `None` on success; a text description of the failure otherwise. |
 
@@ -134,8 +136,8 @@ Aggregate result for `ArchiveListFilesWorkflow.run()`.
 
 | Field / Property | Type | Description |
 |------------------|------|-------------|
-| `per_symbol` | `list[SymbolListFilesResult]` | One entry per requested symbol, in caller-provided input order. |
-| `requested_symbols` | `int` *(property)* | Number of requested symbols. |
+| `per_symbol` | `list[SymbolListFilesResult]` | One entry per distinct input symbol key, in first-occurrence order. |
+| `requested_symbols` | `int` *(property)* | Number of `per_symbol` entries. |
 | `has_failures` | `bool` *(property)* | `True` when any `per_symbol` entry has a non-`None` `error`. Used by the CLI to set exit code 2. |
 | `failed_symbols` | `int` *(property)* | Number of symbols whose listing failed. |
 | `successful_symbols` | `int` *(property)* | Number of symbols that listed successfully. |

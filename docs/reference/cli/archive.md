@@ -44,16 +44,17 @@ binance-datatool list-symbols <TRADE_TYPE>
 | `--contract-type` | `ContractType` | `None` | Restrict futures symbols to `perpetual` or `delivery`. Ignored for spot. |
 | `--json` | `bool` | `False` | Emit one structured result with symbol selection and classification details. |
 
-Flags that do not apply to the chosen market are ignored when filtering inferred metadata.
-When every filter flag is at its default, no filter is constructed and the command runs in
-unfiltered mode. `--freq` and `--type` select the archive prefix and do not enable filtering.
+**Selection:** when every filter flag is at its default, no filter is constructed and every
+symbol directory is returned in the archive's sorted listing order, including symbols whose
+metadata cannot be inferred. With any filter flag, only `ListSymbolsResult.matched` is
+selected. Flags that do not apply to the chosen market are ignored when filtering metadata
+but still enable filtered selection. Uninferable symbols are skipped and one warning on
+stderr gives their count and names, visible without `-v`. No warning is emitted when every
+symbol is inferable. `--freq` and `--type` select the archive prefix and do not enable filtering.
 
-**Output:** one symbol per line to stdout. Without filter flags, every symbol directory is
-printed in the archive's sorted listing order, including symbols whose metadata cannot be
-inferred. With any filter flag, only `ListSymbolsResult.matched` is printed; uninferable
-symbols are skipped and one warning on stderr gives their count and names, visible without
-`-v`. This also applies when the supplied filter flag is ignored for the selected market.
-No warning is emitted when every symbol is inferable. Both modes exit `0` on success.
+These selection and warning rules apply to text and JSON output. Text output writes one
+selected symbol per line to stdout. Every returned result exits `0`, including filtered-out
+or uninferable names.
 
 ### JSON output
 
@@ -62,7 +63,7 @@ option. Every returned result, including an empty listing, contains these arrays
 
 | Field | Contents |
 |-------|----------|
-| `symbols` | Symbol strings matching text output selection and order exactly. |
+| `symbols` | Selected symbol strings in the order defined above. |
 | `matched` | Inferred records that pass filtering, in result order. |
 | `filtered_out` | Inferred records excluded by filtering, in result order. |
 | `uninferable` | Symbol strings whose metadata cannot be inferred; no fabricated attributes. |
@@ -76,13 +77,6 @@ The `summary` fields are `total_raw_symbols`, `returned_symbols`, `matched_symbo
 `filtered_out_symbols`, and `uninferable_symbols`. `returned_symbols` equals the length of
 `symbols`; the three classification counts equal their respective array lengths, and their
 sum equals `total_raw_symbols`. Empty results retain all fields with zero counts and `[]`.
-
-Without filter flags, `symbols` includes uninferable names in raw archive order. Any filter
-flag selects only matched names, including a flag ignored for the chosen market. `--freq`
-and `--type` do not enable filtering. Warnings about uninferable names under filtering retain
-their names and counts on stderr, even at default verbosity; verbose logs also stay on
-stderr. Every returned result exits `0`, including filtered-out or uninferable names.
-Failures before a result retain existing behavior under the shared JSON boundary above.
 
 **Examples:**
 

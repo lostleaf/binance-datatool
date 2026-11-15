@@ -128,20 +128,23 @@ binance-datatool -v list-symbols <TRADE_TYPE> [OPTIONS]
 | `--contract-type`    | Filter futures by contract type                      |
 | `--json`            | Return symbol selection and classification records   |
 
-Output: one symbol per line to stdout. With no filter flags, every archive symbol directory
-is printed in listing order, including symbols whose metadata cannot be inferred. `--freq`
-and `--type` select the archive prefix and do not enable filtering.
+Selection: with no filter flags, every archive symbol directory is returned in listing
+order, including symbols whose metadata cannot be inferred. `--freq` and `--type` select
+the archive prefix and do not enable filtering.
 
-With any filter flag, uninferable symbols are skipped and one stderr warning gives their
-count and names, even without `-v`. This applies even if the flag is ignored for the selected
-market. No warning is emitted when every symbol is inferable. Both modes exit `0` on success.
+With any filter flag, only matching inferred symbols are selected; uninferable symbols are
+skipped and one stderr warning gives their count and names, even without `-v`. This applies
+even if the flag is ignored for the selected market. No warning is emitted when every
+symbol is inferable. These selection and warning rules apply to text and JSON output.
+Text output writes one selected symbol per line to stdout. Every returned result exits `0`,
+including filtered-out or uninferable names.
 
 With `--json`, `command` is `list-symbols` and `dry_run` is `false`; no dry-run option is
 added. Every returned result, including an empty listing, contains:
 
 | Field | Contents |
 |-------|----------|
-| `symbols` | Names matching text selection and ordering exactly. |
+| `symbols` | Selected names in the order defined above. |
 | `matched` | Inferred records that pass filtering, in result order. |
 | `filtered_out` | Inferred records excluded by filtering, in result order. |
 | `uninferable` | Names only, without fabricated metadata. |
@@ -154,12 +157,7 @@ Inapplicable attributes are omitted from both inferred-record arrays.
 `summary` contains `total_raw_symbols`, `returned_symbols`, `matched_symbols`,
 `filtered_out_symbols`, and `uninferable_symbols`. Returned and classification counts equal
 their array lengths; the three classification counts sum to `total_raw_symbols`. Empty
-results retain zero counts and `[]` arrays. Unfiltered `symbols` includes uninferable names
-in raw archive order; any filter flag selects only matched names, including ignored flags.
-Frequency and dataset selectors do not enable filtering. The existing warning about
-uninferable names/counts remains on stderr under filtering, even without `-v`.
-Every returned result exits `0`, including filtered-out or uninferable names. Failures
-without a workflow result follow the shared JSON boundary above.
+results retain zero counts and `[]` arrays.
 
 ### list-files
 
