@@ -206,6 +206,13 @@ array retains workflow symbol order and file order. Each symbol record contains:
 | `files` | Array of objects with `url`, integer byte `size`, and `last_modified`. |
 | `error` | `null` for a successful listing, including an empty directory; original workflow error text for a failed listing. Failed listings have empty `files`. |
 
+Listing errors are non-empty: existing exception messages are preserved verbatim, and an
+empty exception message uses its class name, such as `TimeoutError`. Text and JSON modes
+retain the error and its Symbol on stderr and exit `2`. A failed timeout contributes to
+`failed_symbols`, and suppresses the successful-empty-listing warning even if no files were
+returned. JSON stdout remains one result document with the failed Symbol's `files: []`
+and non-empty `error`; a successful empty listing has `error: null`.
+
 `url` combines the existing download base `https://data.binance.vision` with the complete
 object key, for example
 `https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-03.zip`.
@@ -368,7 +375,8 @@ to stderr: `N files to download, M up to date`.
 ### JSON output
 
 Both modes include `listing_errors`, an array of `{ "symbol": "ETHUSDT", "error": "..." }`
-records retaining the listing error text. `summary.listing_failed_symbols` equals this array's
+records retaining the non-empty listing error text, with the exception class name used for
+an empty exception message. `summary.listing_failed_symbols` equals this array's
 length and is separate from transfer failures. `total_remote` counts only successfully listed
 objects; ZIP and checksum objects count separately. Failed listings leave the inventory
 incomplete and do not contribute estimated file counts.

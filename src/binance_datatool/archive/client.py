@@ -332,7 +332,8 @@ class ArchiveClient:
         Returns:
             Ordered mapping from each input symbol to ``(files, error)``.
             Successful results store ``([], None)`` for empty directories.
-            Failed results store ``([], "<message>")``.
+            Failed results store empty files and a non-empty error string,
+            preserving the exception message or using its class name when empty.
         """
         if not symbols:
             return {}
@@ -351,7 +352,7 @@ class ArchiveClient:
                     )
                     return symbol, files, None
                 except Exception as exc:
-                    return symbol, [], str(exc)
+                    return symbol, [], str(exc) or type(exc).__name__
 
             coroutines = [_one(symbol) for symbol in symbols]
             outcomes: dict[str, SymbolListingResult] = {}

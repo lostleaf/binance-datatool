@@ -77,8 +77,11 @@ SymbolListingResult: TypeAlias = tuple[list[ArchiveFile], str | None]
 
 Per-symbol outcome from `ArchiveClient.list_symbol_files_batch()`. The first
 element is the file list (empty on both success-with-empty-directory and
-failure); the second is `None` on success or a text error description on
-failure.
+failure); the second is `None` on success or a non-empty text error description on
+failure. Existing exception messages are preserved verbatim; an empty message falls back to
+the exception class name, such as `TimeoutError`. Successful empty listings remain `([], None)`.
+Retry policy, per-symbol isolation, and caller order are unchanged. Cancellation propagates
+rather than becoming a symbol failure.
 
 For S3 XML protocol details such as request format, pagination, retry, and proxy
 behavior, see [S3 Listing Protocol](s3-protocol.md).

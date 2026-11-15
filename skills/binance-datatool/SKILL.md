@@ -190,7 +190,11 @@ precision ending in `Z`. URLs join `https://data.binance.vision` and the complet
 there are no local or relative-path fields. For example, a URL can be
 `https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-03.zip`.
 Successful listings use `error: null`, including empty directories. Failed listings have
-empty `files` and retain the workflow error text in `error`.
+empty `files` and a non-empty `error`. Existing exception messages are preserved verbatim;
+an empty message uses the exception class name, such as `TimeoutError`. Treat this as a
+failed listing, counted in `failed_symbols`, rather than an empty success. Text and JSON
+modes retain its Symbol and error on stderr, exit `2`, and suppress empty-result warnings
+when any listing failed.
 
 Symbol and file order follow the workflow. Inputs are stripped and uppercased; repeated
 normalized symbols collapse to one record in first-occurrence order. `--only-zip` and
@@ -241,8 +245,9 @@ Real runs always print download stats on stderr (downloaded/failed/skipped count
 With `-v` or `--progress-bar`, download progress advances after each batch of at most
 512 files, including retry rounds. Invalid concurrency exits `2`.
 
-With `--json`, both modes include `listing_errors`: records with `symbol` and the original
-`error` text. `summary.listing_failed_symbols` equals its length, separately from transfer
+With `--json`, both modes include `listing_errors`: records with `symbol` and the non-empty
+`error` text, using the same exception-message fallback as `list-files`.
+`summary.listing_failed_symbols` equals its length, separately from transfer
 failures. ZIP and checksum objects count individually. `total_remote` counts only objects
 from successful listings; listing errors mean this inventory may be incomplete.
 

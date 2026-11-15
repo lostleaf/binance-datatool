@@ -205,6 +205,30 @@ async def test_archive_list_files_workflow_preserves_input_order(sample_archive_
 
 
 @pytest.mark.asyncio
+async def test_archive_list_files_workflow_retains_timeout_and_counts(
+    listing_timeout_http, sample_archive_files
+) -> None:
+    """A real client preserves timeout diagnostics and successful empty listings."""
+    result = await ArchiveListFilesWorkflow(
+        TradeType.um,
+        DataFrequency.monthly,
+        DataType.funding_rate,
+        ["ETHUSDT", "BNBUSDT", "BTCUSDT"],
+    ).run()
+
+    assert [(entry.symbol, entry.files, entry.error) for entry in result.per_symbol] == [
+        ("ETHUSDT", [], "TimeoutError"),
+        ("BNBUSDT", [], None),
+        ("BTCUSDT", sample_archive_files, None),
+    ]
+    assert result.requested_symbols == 3
+    assert result.successful_symbols == 2
+    assert result.failed_symbols == 1
+    assert result.total_remote_files == 2
+    assert result.has_failures is True
+
+
+@pytest.mark.asyncio
 async def test_archive_list_files_workflow_captures_per_symbol_errors(sample_archive_files) -> None:
     """Workflow failures should be isolated to the failing symbol."""
     workflow = ArchiveListFilesWorkflow(

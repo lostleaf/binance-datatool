@@ -849,6 +849,63 @@ def test_cli_list_files_long_output_and_only_zip(monkeypatch) -> None:
     assert lines == ["1048\t2026-04-01T08:06:34Z\tBTCUSDT/BTCUSDT-fundingRate-2026-03.zip"]
 
 
+@pytest.mark.parametrize("json_output", [False, True])
+@pytest.mark.parametrize("mixed", [False, True])
+def test_cli_list_files_retains_timeout_diagnostics(
+    listing_timeout_http, stderr_messages, json_output, mixed
+) -> None:
+    """Timeouts remain Symbol-associated errors through the real workflow and CLI."""
+    symbols = ["ETHUSDT", "BNBUSDT", "BTCUSDT"] if mixed else ["ETHUSDT"]
+    result = runner.invoke(
+        app,
+        [
+            "list-files",
+            "um",
+            "--freq",
+            "monthly",
+            "--type",
+            "fundingRate",
+            *symbols,
+            *(["--json"] if json_output else []),
+        ],
+    )
+
+    assert result.exit_code == 2, result.exception
+    assert any("ETHUSDT" in line and "TimeoutError" in line for line in result.stderr.splitlines())
+    assert stderr_messages == []
+    if json_output:
+        document = json.loads(result.stdout)
+        assert set(document) == {"command", "dry_run", "summary", "per_symbol"}
+        assert document["command"] == "list-files"
+        assert document["dry_run"] is False
+        assert document["summary"] == {
+            "requested_symbols": 3 if mixed else 1,
+            "successful_symbols": 2 if mixed else 0,
+            "failed_symbols": 1,
+            "total_remote_files": 2 if mixed else 0,
+            "returned_files": 2 if mixed else 0,
+        }
+        assert [entry["symbol"] for entry in document["per_symbol"]] == symbols
+        assert document["per_symbol"][0] == {
+            "symbol": "ETHUSDT",
+            "files": [],
+            "error": "TimeoutError",
+        }
+        if mixed:
+            assert document["per_symbol"][1] == {"symbol": "BNBUSDT", "files": [], "error": None}
+            assert document["per_symbol"][2]["error"] is None
+            assert len(document["per_symbol"][2]["files"]) == 2
+    else:
+        assert result.stdout.splitlines() == (
+            [
+                "BTCUSDT/BTCUSDT-fundingRate-2026-03.zip",
+                "BTCUSDT/BTCUSDT-fundingRate-2026-03.zip.CHECKSUM",
+            ]
+            if mixed
+            else []
+        )
+
+
 def test_cli_list_files_logs_errors_and_exits_2(monkeypatch) -> None:
     """Per-symbol failures should log to stderr and exit with code 2."""
 

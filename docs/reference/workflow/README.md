@@ -128,6 +128,10 @@ Per-symbol entry inside `ListFilesResult.per_symbol`. A successful listing of an
 empty directory is represented by `files == []` with `error is None`; this is
 **distinct** from a failed listing, which also carries an empty `files` list but sets
 `error` to a non-empty description of the failure.
+The archive client preserves non-empty exception messages verbatim and uses the exception
+class name when the message is empty, so an exhausted bare timeout has `error == "TimeoutError"`.
+The workflow retains this diagnostic and its Symbol; the failure count includes the timeout
+while a successful empty listing counts as a success.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -260,7 +264,7 @@ Structured per-symbol listing error, used by both `DiffResult` and `DownloadResu
 | Field | Type | Description |
 |-------|------|-------------|
 | `symbol` | `str` | The symbol whose listing failed. |
-| `error` | `str` | Text description of the failure. |
+| `error` | `str` | Non-empty failure description: the original exception message, or its class name if the message is empty. |
 
 ## `ArchiveVerifyWorkflow`
 

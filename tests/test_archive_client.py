@@ -470,8 +470,31 @@ async def test_archive_client_list_symbol_files_batch_preserves_order_and_shares
 
 
 @pytest.mark.asyncio
+async def test_archive_client_batch_retains_timeout_diagnostics(
+    listing_timeout_http, sample_archive_files
+) -> None:
+    """Exhausted bare timeouts differ from empty successes in an ordered mixed batch."""
+    result = await ArchiveClient().list_symbol_files_batch(
+        TradeType.um,
+        DataFrequency.monthly,
+        DataType.funding_rate,
+        ["ETHUSDT", "BNBUSDT", "BTCUSDT"],
+    )
+
+    assert list(result) == ["ETHUSDT", "BNBUSDT", "BTCUSDT"]
+    assert result == {
+        "ETHUSDT": ([], "TimeoutError"),
+        "BNBUSDT": ([], None),
+        "BTCUSDT": (sample_archive_files, None),
+    }
+    assert listing_timeout_http == {"ETHUSDT": 5, "BNBUSDT": 1, "BTCUSDT": 1}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message", ["boom", "  remote listing failed\n", " "])
 async def test_archive_client_list_symbol_files_batch_isolates_failures(
     monkeypatch: pytest.MonkeyPatch,
+    message: str,
 ) -> None:
     """Batch listings should convert per-symbol exceptions into structured errors."""
     client = ArchiveClient()
@@ -494,7 +517,7 @@ async def test_archive_client_list_symbol_files_batch_isolates_failures(
     ) -> list[ArchiveFile]:
         del trade_type, data_freq, data_type, interval, session
         if symbol == "ETHUSDT":
-            raise aiohttp.ClientError("boom")
+            raise aiohttp.ClientError(message)
         return []
 
     monkeypatch.setattr(client, "_create_session", lambda: FakeSession())
@@ -509,7 +532,7 @@ async def test_archive_client_list_symbol_files_batch_isolates_failures(
 
     assert result == {
         "BTCUSDT": ([], None),
-        "ETHUSDT": ([], "boom"),
+        "ETHUSDT": ([], message),
     }
 
 

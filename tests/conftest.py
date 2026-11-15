@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from urllib.parse import parse_qs, urlsplit
 
+import aiohttp
 import pytest
+from tenacity import wait_none
 
 from binance_datatool.archive import ArchiveFile
 
@@ -86,6 +89,48 @@ def sample_archive_files() -> list[ArchiveFile]:
             last_modified=datetime(2026, 4, 1, 8, 6, 34, tzinfo=UTC),
         ),
     ]
+
+
+@pytest.fixture
+def listing_timeout_http(monkeypatch, sample_archive_files) -> dict[str, int]:
+    """Serve failed, empty, and nonempty listings without network or retry delays."""
+    attempts: dict[str, int] = {}
+
+    class Response:
+        def __init__(self, symbol: str) -> None:
+            self.symbol = symbol
+
+        async def __aenter__(self) -> Response:
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def raise_for_status(self) -> None:
+            return None
+
+        async def text(self) -> str:
+            files = sample_archive_files if self.symbol == "BTCUSDT" else []
+            entries = "".join(
+                f"<Contents><Key>{file.key}</Key><Size>{file.size}</Size>"
+                f"<LastModified>{file.last_modified.isoformat()}</LastModified></Contents>"
+                for file in files
+            )
+            return f"<ListBucketResult>{entries}</ListBucketResult>"
+
+    def get(session: aiohttp.ClientSession, url: str) -> Response:
+        prefix = parse_qs(urlsplit(url).query)["prefix"][0]
+        symbol = prefix.rstrip("/").rsplit("/", maxsplit=1)[-1]
+        attempts[symbol] = attempts.get(symbol, 0) + 1
+        if symbol == "ETHUSDT":
+            raise TimeoutError
+        return Response(symbol)
+
+    monkeypatch.setattr(aiohttp.ClientSession, "get", get)
+    monkeypatch.setattr(
+        "binance_datatool.archive.client.wait_exponential", lambda **kw: wait_none()
+    )
+    return attempts
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
