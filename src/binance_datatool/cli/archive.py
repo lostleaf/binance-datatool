@@ -422,6 +422,11 @@ def download_command(
     )
     result = asyncio.run(workflow.run())
 
+    if json_output:
+        listing_errors = [
+            {"symbol": entry.symbol, "error": entry.error} for entry in result.listing_errors
+        ]
+
     if isinstance(result, DiffResult):
         if json_output:
             emit_json(
@@ -441,10 +446,7 @@ def download_command(
                     }
                     for entry in result.to_download
                 ],
-                listing_errors=[
-                    {"symbol": entry.symbol, "error": entry.error}
-                    for entry in result.listing_errors
-                ],
+                listing_errors=listing_errors,
             )
         else:
             for entry in result.to_download:
@@ -471,9 +473,7 @@ def download_command(
                 "listing_failed_symbols": result.listing_failed_symbols,
             },
             failed_paths=[absolute_path(path) for path in result.failed_paths],
-            listing_errors=[
-                {"symbol": entry.symbol, "error": entry.error} for entry in result.listing_errors
-            ],
+            listing_errors=listing_errors,
         )
 
     typer.echo(
