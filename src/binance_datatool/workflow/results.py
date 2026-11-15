@@ -43,11 +43,6 @@ class ListSymbolsResult:
         """Return the total number of raw symbols returned by the archive."""
         return self.matched_symbols + self.filtered_out_symbols + self.inference_failed_symbols
 
-    @property
-    def unmatched_symbols(self) -> int:
-        """Return the number of raw symbols that failed symbol inference."""
-        return self.inference_failed_symbols
-
 
 @dataclass(slots=True)
 class SymbolListFilesResult:

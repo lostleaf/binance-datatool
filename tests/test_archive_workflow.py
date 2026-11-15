@@ -84,7 +84,7 @@ async def test_archive_list_symbols_workflow_returns_inferred_and_unmatched_spot
 
 @pytest.mark.asyncio
 async def test_archive_list_symbols_workflow_applies_spot_filter_and_preserves_order() -> None:
-    """Spot workflows should split inferred symbols into matched and filtered-out buckets."""
+    """Spot filtering preserves ordered buckets and omits the legacy count alias."""
     workflow = ArchiveListSymbolsWorkflow(
         trade_type=TradeType.spot,
         data_freq=DataFrequency.daily,
@@ -109,6 +109,9 @@ async def test_archive_list_symbols_workflow_applies_spot_filter_and_preserves_o
     assert result.filtered_out_symbols == 3
     assert result.inference_failed_symbols == 1
     assert result.total_raw_symbols == 5
+
+    with pytest.raises(AttributeError):
+        _ = result.unmatched_symbols
 
 
 @pytest.mark.asyncio
