@@ -195,9 +195,215 @@ def test_cli_list_symbols_outputs_all_raw_symbols_without_filters(monkeypatch) -
     assert result.stderr == ""
 
 
+def test_cli_list_symbols_json_preserves_unfiltered_archive_order(monkeypatch) -> None:
+    """JSON retains unknown names and reports inferred spot attributes."""
+
+    async def fake_run(self) -> ListSymbolsResult:
+        assert self.symbol_filter is None
+        return ListSymbolsResult(
+            matched=[SpotSymbolInfo("BTCUPUSDT", "BTCUP", "USDT", True, False)],
+            unmatched=["UNKNOWN"],
+            filtered_out=[],
+            raw_symbols=["UNKNOWN", "BTCUPUSDT"],
+        )
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveListSymbolsWorkflow.run", fake_run)
+
+    result = runner.invoke(app, ["list-symbols", "spot", "--json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {
+        "command": "list-symbols",
+        "dry_run": False,
+        "summary": {
+            "total_raw_symbols": 2,
+            "returned_symbols": 2,
+            "matched_symbols": 1,
+            "filtered_out_symbols": 0,
+            "uninferable_symbols": 1,
+        },
+        "symbols": ["UNKNOWN", "BTCUPUSDT"],
+        "matched": [
+            {
+                "symbol": "BTCUPUSDT",
+                "base_asset": "BTCUP",
+                "quote_asset": "USDT",
+                "is_leverage": True,
+                "is_stable_pair": False,
+            }
+        ],
+        "filtered_out": [],
+        "uninferable": ["UNKNOWN"],
+    }
+    assert result.stderr == ""
+
+
+@pytest.mark.parametrize(
+    ("market", "matched", "filtered_out", "attributes", "excluded_attributes"),
+    [
+        (
+            "spot",
+            SpotSymbolInfo("USDCUSDT", "USDC", "USDT", False, True),
+            SpotSymbolInfo("BTCUPUSDT", "BTCUP", "USDT", True, False),
+            {"is_leverage": False, "is_stable_pair": True},
+            {"is_leverage": True, "is_stable_pair": False},
+        ),
+        (
+            "um",
+            UmSymbolInfo("USDCUSDT", "USDC", "USDT", ContractType.perpetual, True),
+            UmSymbolInfo("BTCUSDT_240927", "BTC", "USDT", ContractType.delivery, False),
+            {"contract_type": "perpetual", "is_stable_pair": True},
+            {"contract_type": "delivery", "is_stable_pair": False},
+        ),
+        (
+            "cm",
+            CmSymbolInfo("BTCUSD_PERP", "BTC", "USD", ContractType.perpetual),
+            CmSymbolInfo("ETHUSD_240927", "ETH", "USD", ContractType.delivery),
+            {"contract_type": "perpetual"},
+            {"contract_type": "delivery"},
+        ),
+    ],
+)
+def test_cli_list_symbols_json_classifies_market_records(
+    monkeypatch, market, matched, filtered_out, attributes, excluded_attributes
+) -> None:
+    """Each market exposes only its applicable attributes in both inferred buckets."""
+
+    async def fake_run(self) -> ListSymbolsResult:
+        return ListSymbolsResult(
+            matched=[matched],
+            unmatched=["UNKNOWN"],
+            filtered_out=[filtered_out],
+            raw_symbols=[filtered_out.symbol, "UNKNOWN", matched.symbol],
+        )
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveListSymbolsWorkflow.run", fake_run)
+
+    result = runner.invoke(app, ["list-symbols", market, "--quote", "USDT", "--json"])
+
+    assert result.exit_code == 0
+    document = json.loads(result.stdout)
+    assert document["command"] == "list-symbols"
+    assert document["dry_run"] is False
+    assert document["summary"] == {
+        "total_raw_symbols": 3,
+        "returned_symbols": 1,
+        "matched_symbols": 1,
+        "filtered_out_symbols": 1,
+        "uninferable_symbols": 1,
+    }
+    assert all(type(count) is int for count in document["summary"].values())
+    assert document["symbols"] == [matched.symbol]
+    assert document["matched"] == [
+        {
+            "symbol": matched.symbol,
+            "base_asset": matched.base_asset,
+            "quote_asset": matched.quote_asset,
+            **attributes,
+        }
+    ]
+    assert document["filtered_out"] == [
+        {
+            "symbol": filtered_out.symbol,
+            "base_asset": filtered_out.base_asset,
+            "quote_asset": filtered_out.quote_asset,
+            **excluded_attributes,
+        }
+    ]
+    assert document["uninferable"] == ["UNKNOWN"]
+    assert "UNKNOWN" in result.stderr
+
+
+@pytest.mark.parametrize("verbosity", [[], ["-v"], ["-vv"]])
 @pytest.mark.parametrize("flags", [[], ["--quote", "USDT"]])
+def test_cli_list_symbols_json_empty_and_verbose_results(monkeypatch, verbosity, flags) -> None:
+    """Empty results are explicit and verbosity sends diagnostics only to stderr."""
+
+    async def fake_run(self) -> ListSymbolsResult:
+        logger.info("listing diagnostic payload")
+        return ListSymbolsResult(matched=[], unmatched=[], filtered_out=[])
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveListSymbolsWorkflow.run", fake_run)
+
+    result = runner.invoke(app, [*verbosity, "list-symbols", "spot", *flags, "--json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {
+        "command": "list-symbols",
+        "dry_run": False,
+        "summary": {
+            "total_raw_symbols": 0,
+            "returned_symbols": 0,
+            "matched_symbols": 0,
+            "filtered_out_symbols": 0,
+            "uninferable_symbols": 0,
+        },
+        "symbols": [],
+        "matched": [],
+        "filtered_out": [],
+        "uninferable": [],
+    }
+    if verbosity:
+        assert "listing diagnostic payload" in result.stderr
+    else:
+        assert result.stderr == ""
+
+
+def test_cli_list_symbols_json_prefix_selectors_do_not_enable_filtering(monkeypatch) -> None:
+    """Frequency and dataset selection retain uninferable names without warnings."""
+
+    async def fake_run(self) -> ListSymbolsResult:
+        assert self.data_freq.value == "monthly"
+        assert self.data_type.value == "fundingRate"
+        assert self.symbol_filter is None
+        return ListSymbolsResult(
+            matched=[], unmatched=["UNKNOWN"], filtered_out=[], raw_symbols=["UNKNOWN"]
+        )
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveListSymbolsWorkflow.run", fake_run)
+    result = runner.invoke(
+        app, ["list-symbols", "um", "--freq", "monthly", "--type", "fundingRate", "--json"]
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["symbols"] == ["UNKNOWN"]
+    assert result.stderr == ""
+
+
+@pytest.mark.parametrize("arguments", [["invalid", "--json"], ["spot", "--dry-run", "--json"]])
+def test_cli_list_symbols_json_argument_errors_have_no_result(monkeypatch, arguments) -> None:
+    """Invalid arguments retain their failure without manufacturing a result."""
+
+    async def unexpected_run(self):
+        pytest.fail("Invalid input must be rejected before workflow execution.")
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveListSymbolsWorkflow.run", unexpected_run)
+    result = runner.invoke(app, ["list-symbols", *arguments])
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert result.stderr
+
+
+def test_cli_list_symbols_json_unhandled_error_has_no_result(monkeypatch) -> None:
+    """A workflow exception remains an exception and emits no JSON."""
+
+    async def fake_run(self):
+        raise RuntimeError("symbol listing unavailable")
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveListSymbolsWorkflow.run", fake_run)
+    result = runner.invoke(app, ["list-symbols", "spot", "--json"])
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, RuntimeError)
+    assert str(result.exception) == "symbol listing unavailable"
+    assert result.stdout == ""
+
+
+@pytest.mark.parametrize("flags", [[], ["--quote", "USDT"]])
+@pytest.mark.parametrize("json_output", [False, True])
 def test_cli_list_symbols_does_not_warn_when_all_symbols_are_inferable(
-    monkeypatch, flags: list[str]
+    monkeypatch, flags: list[str], json_output: bool
 ) -> None:
     """Successful inference should keep stderr empty in both listing modes."""
 
@@ -217,10 +423,15 @@ def test_cli_list_symbols_does_not_warn_when_all_symbols_are_inferable(
         fake_run,
     )
 
-    result = runner.invoke(app, ["list-symbols", "spot", *flags])
+    result = runner.invoke(
+        app, ["list-symbols", "spot", *flags, *(["--json"] if json_output else [])]
+    )
 
     assert result.exit_code == 0
-    assert result.stdout == "BTCUSDT\nETHUSDT\n"
+    if json_output:
+        assert json.loads(result.stdout)["symbols"] == ["BTCUSDT", "ETHUSDT"]
+    else:
+        assert result.stdout == "BTCUSDT\nETHUSDT\n"
     assert result.stderr == ""
 
 
@@ -238,8 +449,14 @@ def test_cli_list_symbols_does_not_warn_when_all_symbols_are_inferable(
         ("cm", ["--exclude-stables"], "BTCUSD_PERP"),
     ],
 )
+@pytest.mark.parametrize("json_output", [False, True])
 def test_cli_list_symbols_warns_about_unknown_symbols_with_any_filter_flag(
-    monkeypatch, stderr_messages, trade_type: str, flags: list[str], known_symbol: str
+    monkeypatch,
+    stderr_messages,
+    trade_type: str,
+    flags: list[str],
+    known_symbol: str,
+    json_output: bool,
 ) -> None:
     """Filter flags should skip unknown symbols with one visible warning carrying their data."""
 
@@ -261,10 +478,19 @@ def test_cli_list_symbols_warns_about_unknown_symbols_with_any_filter_flag(
         fake_run,
     )
 
-    result = runner.invoke(app, ["list-symbols", trade_type, *flags])
+    result = runner.invoke(
+        app, ["list-symbols", trade_type, *flags, *(["--json"] if json_output else [])]
+    )
 
     assert result.exit_code == 0
-    assert result.stdout == f"{known_symbol}\n"
+    if json_output:
+        document = json.loads(result.stdout)
+        assert document["symbols"] == [known_symbol]
+        assert document["uninferable"] == ["BTCZZZUNKNOWN", "ETHZZZUNKNOWN"]
+        assert document["summary"]["returned_symbols"] == 1
+        assert document["summary"]["uninferable_symbols"] == 2
+    else:
+        assert result.stdout == f"{known_symbol}\n"
     assert len(stderr_messages) == 1
     assert stderr_messages[0] in result.stderr
     assert "2" in stderr_messages[0]

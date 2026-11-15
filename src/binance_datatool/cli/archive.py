@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from dataclasses import asdict
 from datetime import UTC
 from functools import partial
 from typing import TYPE_CHECKING, Annotated, TypeAlias
@@ -84,10 +85,11 @@ def list_symbols_command(
         ContractType | None,
         typer.Option("--contract-type", help="Filter futures symbols by contract type."),
     ] = None,
+    json_output: JsonOutputOption = False,
 ) -> None:
     """List symbol directories under a Binance archive prefix.
 
-    Prints one symbol per line to stdout.
+    Prints one symbol per line or a structured JSON classification result.
     """
     symbol_filter = build_symbol_filter(
         trade_type=trade_type,
@@ -103,18 +105,33 @@ def list_symbols_command(
         symbol_filter=symbol_filter,
     )
     result = asyncio.run(workflow.run())
-    if not (quotes or exclude_leverage or exclude_stables or contract_type):
-        for symbol in result.raw_symbols:
-            typer.echo(symbol)
+    filtering = bool(quotes or exclude_leverage or exclude_stables or contract_type)
+    symbols = [info.symbol for info in result.matched] if filtering else result.raw_symbols
+    if json_output:
+        emit_json(
+            "list-symbols",
+            dry_run=False,
+            summary={
+                "total_raw_symbols": result.total_raw_symbols,
+                "returned_symbols": len(symbols),
+                "matched_symbols": result.matched_symbols,
+                "filtered_out_symbols": result.filtered_out_symbols,
+                "uninferable_symbols": result.inference_failed_symbols,
+            },
+            symbols=symbols,
+            matched=[asdict(info) for info in result.matched],
+            filtered_out=[asdict(info) for info in result.filtered_out],
+            uninferable=result.unmatched,
+        )
     else:
-        for info in result.matched:
-            typer.echo(info.symbol)
-        if result.unmatched:
-            typer.echo(
-                f"Warning: skipped {result.inference_failed_symbols} symbols whose metadata "
-                f"could not be inferred for filtering: {', '.join(result.unmatched)}",
-                err=True,
-            )
+        for symbol in symbols:
+            typer.echo(symbol)
+    if filtering and result.unmatched:
+        typer.echo(
+            f"Warning: skipped {result.inference_failed_symbols} symbols whose metadata "
+            f"could not be inferred for filtering: {', '.join(result.unmatched)}",
+            err=True,
+        )
 
 
 def _resolve_symbols(symbols: list[str] | None) -> list[str]:
