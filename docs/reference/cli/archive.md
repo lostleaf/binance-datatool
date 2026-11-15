@@ -5,9 +5,9 @@ Domain terms are defined in the [glossary](../../../GLOSSARY.md).
 
 ## Structured JSON results
 
-`download` accepts `--json` in real and dry-run modes; `list-files` accepts `--json` for
-remote listings. Each returned workflow result emits exactly one JSON document on stdout,
-including empty results, no-work runs, and partial or all-symbol listing failures.
+`list-symbols`, `list-files`, and `download` accept `--json`; download supports real and dry-run modes.
+Each returned workflow result emits exactly one JSON document on stdout, including empty
+listings or plans, no-work runs, and partial or all-symbol listing failures.
 Logs, progress, existing summaries, and diagnostic payloads
 remain on stderr, including aria2 subprocess output. Output without `--json` is unchanged.
 
@@ -29,7 +29,7 @@ stdout may be empty. Returned failures emit their JSON before the command exits 
 binance-datatool list-symbols <TRADE_TYPE>
     [--freq FREQ] [--type TYPE]
     [--quote QUOTE ...] [--exclude-leverage] [--exclude-stables]
-    [--contract-type CONTRACT_TYPE]
+    [--contract-type CONTRACT_TYPE] [--json]
 ```
 
 | Argument / Option | Type | Default | Description |
@@ -41,6 +41,7 @@ binance-datatool list-symbols <TRADE_TYPE>
 | `--exclude-leverage` | `bool` | `False` | Exclude leveraged spot tokens. Ignored for USD-M and COIN-M. |
 | `--exclude-stables` | `bool` | `False` | Exclude stablecoin pairs. Ignored for COIN-M. |
 | `--contract-type` | `ContractType` | `None` | Restrict futures symbols to `perpetual` or `delivery`. Ignored for spot. |
+| `--json` | `bool` | `False` | Emit one structured result with symbol selection and classification details. |
 
 Flags that do not apply to the chosen market are ignored when filtering inferred metadata.
 When every filter flag is at its default, no filter is constructed and the command runs in
@@ -53,12 +54,42 @@ symbols are skipped and one warning on stderr gives their count and names, visib
 `-v`. This also applies when the supplied filter flag is ignored for the selected market.
 No warning is emitted when every symbol is inferable. Both modes exit `0` on success.
 
+### JSON output
+
+`--json` emits `command: "list-symbols"` and `dry_run: false`; the command has no dry-run
+option. Every returned result, including an empty listing, contains these arrays:
+
+| Field | Contents |
+|-------|----------|
+| `symbols` | Symbol strings matching text output selection and order exactly. |
+| `matched` | Inferred records that pass filtering, in result order. |
+| `filtered_out` | Inferred records excluded by filtering, in result order. |
+| `uninferable` | Symbol strings whose metadata cannot be inferred; no fabricated attributes. |
+
+Every inferred record contains `symbol`, `base_asset`, and `quote_asset`. Spot records add
+boolean `is_leverage` and `is_stable_pair`; USD-M records add `contract_type` and boolean
+`is_stable_pair`; COIN-M records add only `contract_type`. Contract values are `perpetual`
+or `delivery`. Inapplicable attributes are omitted from both inferred-record arrays.
+
+The `summary` fields are `total_raw_symbols`, `returned_symbols`, `matched_symbols`,
+`filtered_out_symbols`, and `uninferable_symbols`. `returned_symbols` equals the length of
+`symbols`; the three classification counts equal their respective array lengths, and their
+sum equals `total_raw_symbols`. Empty results retain all fields with zero counts and `[]`.
+
+Without filter flags, `symbols` includes uninferable names in raw archive order. Any filter
+flag selects only matched names, including a flag ignored for the chosen market. `--freq`
+and `--type` do not enable filtering. Warnings about uninferable names under filtering retain
+their names and counts on stderr, even at default verbosity; verbose logs also stay on
+stderr. Every returned result exits `0`, including filtered-out or uninferable names.
+Failures before a result retain existing behavior under the shared JSON boundary above.
+
 **Examples:**
 
 ```
 binance-datatool list-symbols spot --quote USDT --exclude-leverage --exclude-stables
 binance-datatool list-symbols um --quote USDT --quote USDC --contract-type perpetual
 binance-datatool list-symbols cm --contract-type delivery
+binance-datatool list-symbols um --quote USDT --json
 ```
 
 ### Data flow

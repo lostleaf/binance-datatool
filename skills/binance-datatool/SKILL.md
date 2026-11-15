@@ -23,14 +23,14 @@ into what the tool is doing (listing symbols, downloading files, verifying check
 for DEBUG-level output when troubleshooting.
 
 All log output goes to stderr. Command results (symbol lists, file paths, dry-run diffs) go to
-stdout. Use `download --json` or `list-files --json` for a single structured result,
+stdout. Use `download --json`, `list-symbols --json`, or `list-files --json` for a structured result,
 including when aria2 writes stdout during downloads.
 
 ## JSON results
 
-`download` supports `--json` in real and dry-run modes; `list-files` supports it for remote
-listings. Parse the entire stdout as one JSON
-document after a returned result, including exit `2`; logs, progress, diagnostic payloads,
+`list-symbols`, `list-files`, and `download` support `--json`; download supports real and dry-run modes.
+Parse the entire stdout as one JSON document after a returned result, including exit `2`;
+logs, progress, diagnostic payloads,
 and existing summaries remain on stderr. No-flag output is unchanged.
 
 The envelope contains `command` (CLI name), boolean `dry_run`, and object `summary`.
@@ -125,6 +125,7 @@ binance-datatool -v list-symbols <TRADE_TYPE> [OPTIONS]
 | `--exclude-leverage` | Exclude leveraged tokens (spot only)                 |
 | `--exclude-stables`  | Exclude stablecoin pairs                             |
 | `--contract-type`    | Filter futures by contract type                      |
+| `--json`            | Return symbol selection and classification records   |
 
 Output: one symbol per line to stdout. With no filter flags, every archive symbol directory
 is printed in listing order, including symbols whose metadata cannot be inferred. `--freq`
@@ -133,6 +134,31 @@ and `--type` select the archive prefix and do not enable filtering.
 With any filter flag, uninferable symbols are skipped and one stderr warning gives their
 count and names, even without `-v`. This applies even if the flag is ignored for the selected
 market. No warning is emitted when every symbol is inferable. Both modes exit `0` on success.
+
+With `--json`, `command` is `list-symbols` and `dry_run` is `false`; no dry-run option is
+added. Every returned result, including an empty listing, contains:
+
+| Field | Contents |
+|-------|----------|
+| `symbols` | Names matching text selection and ordering exactly. |
+| `matched` | Inferred records that pass filtering, in result order. |
+| `filtered_out` | Inferred records excluded by filtering, in result order. |
+| `uninferable` | Names only, without fabricated metadata. |
+
+All inferred records contain `symbol`, `base_asset`, and `quote_asset`. Spot adds boolean
+`is_leverage` and `is_stable_pair`; USD-M adds `contract_type` and boolean `is_stable_pair`;
+COIN-M adds only `contract_type`. Contract values are `perpetual` or `delivery`.
+Inapplicable attributes are omitted from both inferred-record arrays.
+
+`summary` contains `total_raw_symbols`, `returned_symbols`, `matched_symbols`,
+`filtered_out_symbols`, and `uninferable_symbols`. Returned and classification counts equal
+their array lengths; the three classification counts sum to `total_raw_symbols`. Empty
+results retain zero counts and `[]` arrays. Unfiltered `symbols` includes uninferable names
+in raw archive order; any filter flag selects only matched names, including ignored flags.
+Frequency and dataset selectors do not enable filtering. The existing warning about
+uninferable names/counts remains on stderr under filtering, even without `-v`.
+Every returned result exits `0`, including filtered-out or uninferable names. Failures
+without a workflow result follow the shared JSON boundary above.
 
 ### list-files
 
