@@ -5,7 +5,8 @@ Domain terms are defined in the [glossary](../../../GLOSSARY.md).
 
 ## Structured JSON results
 
-`list-symbols`, `list-files`, and `download` accept `--json`; download supports real and dry-run modes.
+`list-symbols`, `list-files`, `download`, and `verify` accept `--json`; download and verify
+support real and dry-run modes.
 Each returned workflow result emits exactly one JSON document on stdout, including empty
 listings or plans, no-work runs, and partial or all-symbol listing failures.
 Logs, progress, existing summaries, and diagnostic payloads
@@ -492,6 +493,7 @@ binance-datatool [--archive-home PATH] verify <TRADE_TYPE> [SYMBOLS...]
     [--keep-failed]
     [-n | --dry-run]
     [--progress-bar]
+    [--json]
 ```
 
 Verifies local archive zip files against their sibling `.CHECKSUM` files using
@@ -506,6 +508,7 @@ SHA256. Requires `BINANCE_DATATOOL_ARCHIVE_HOME` to be configured (same resoluti
 | `--interval` | `str \| None` | `None` | Kline interval directory. Same validation as `list-files`. |
 | `--keep-failed` | `bool` | `False` | Keep failed zip and checksum files instead of deleting them. |
 | `-n` / `--dry-run` | `bool` | `False` | Show what would be verified without computing checksums or modifying files. |
+| `--json` | `bool` | `False` | Emit one structured JSON result on stdout in either mode. |
 | `--progress-bar` | `bool` | `False` | Show interactive tqdm progress bar on stderr. By default no interactive progress is shown; sampled log lines at INFO level are emitted instead. See [`common.progress`](../common/progress.md). |
 
 ### Symbol input resolution
@@ -515,7 +518,7 @@ stdin, every symbol is stripped and uppercased.
 
 ### Dry-run output
 
-In dry-run mode (`-n`), the command prints one relative path per line to stdout
+Without `--json`, dry-run mode (`-n`) prints one relative path per line to stdout
 for each zip file that would be verified:
 
 ```
@@ -532,6 +535,37 @@ A summary line is printed to stderr:
 If no local zip files match the requested selection, the command still exits `0`
 and prints a warning to stderr asking you to re-check `--archive-home`, the path
 selection flags, and the symbol list.
+
+### JSON output
+
+Verification counts ZIPs as targets; their checksums are not separate verification targets.
+Both modes use `command: "verify"` and the shared JSON conventions above.
+
+| Mode | Required `summary` fields | Additional result field |
+|------|---------------------------|-------------------------|
+| Dry-run | `total_zips`, `to_verify`, `skipped`, `orphan_zips`, `orphan_checksums` | `to_verify`: absolute path strings for ZIPs awaiting verification. |
+| Real run | `total_zips`, `verified`, `failed`, `skipped`, `orphan_zips`, `orphan_checksums` | `failed_details`: records containing absolute `path` and the workflow's failure `detail`. |
+
+Dry-run only scans, without hashing, cleanup, or marker changes. It satisfies
+`total_zips = to_verify + skipped + orphan_zips`, and `summary.to_verify` equals the plan
+length. It omits completed verification counts and `failed_details`.
+
+Real runs satisfy `total_zips = verified + failed + skipped + orphan_zips`, and
+`summary.failed` equals the length of `failed_details`. They omit `to_verify` and supply
+no successful or skipped file manifests. Failure details remain in the document after
+the failed ZIP and its checksum are deleted by default; `--keep-failed` retains the pair.
+The document is emitted before exit `2` for any verification failure. Other returned
+results exit `0`, including empty scans and orphan cleanup alone.
+
+Local paths are absolute, interpreting a relative Archive home against the invocation's
+working directory. Formatting requires no file existence, leaves symlinks unresolved,
+and does not change filesystem targets. A path may identify an already deleted file;
+its presence does not establish existence or Verified status.
+
+```bash
+binance-datatool -v --archive-home ./archive verify um --freq monthly --type fundingRate --dry-run --json BTCUSDT
+binance-datatool -v --archive-home ./archive verify um --freq monthly --type fundingRate --json BTCUSDT
+```
 
 ### Normal output
 
@@ -574,6 +608,11 @@ stderr instead of silently pretending everything is current.
 |-------------|--------|
 | Zip without sibling `.CHECKSUM` | Clear all markers for the zip; **keep** the zip file. |
 | `.CHECKSUM` without sibling `.zip` | Delete the checksum file and clear its markers. |
+
+Orphan counts describe classified artifacts, rather than marker files deleted. Dry-run
+reports discoveries; real-run counts describe artifacts processed under these rules.
+An orphan ZIP counts even when it had no marker to clear. Orphan checksums do not
+contribute to `total_zips`, and orphan cleanup does not count as failed verification.
 
 ### Verified marker protocol
 

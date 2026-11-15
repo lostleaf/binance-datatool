@@ -23,12 +23,13 @@ into what the tool is doing (listing symbols, downloading files, verifying check
 for DEBUG-level output when troubleshooting.
 
 All log output goes to stderr. Command results (symbol lists, file paths, dry-run diffs) go to
-stdout. Use `download --json`, `list-symbols --json`, or `list-files --json` for a structured result,
-including when aria2 writes stdout during downloads.
+stdout. Use `--json` with `list-symbols`, `list-files`, `download`, or `verify` for a single
+structured result, including when aria2 writes stdout during downloads.
 
 ## JSON results
 
-`list-symbols`, `list-files`, and `download` support `--json`; download supports real and dry-run modes.
+`list-symbols`, `list-files`, `download`, and `verify` support `--json`; download and verify
+support real and dry-run modes.
 Parse the entire stdout as one JSON document after a returned result, including exit `2`;
 logs, progress, diagnostic payloads,
 and existing summaries remain on stderr. No-flag output is unchanged.
@@ -285,7 +286,39 @@ binance-datatool -v verify <TRADE_TYPE> [SYMBOLS...] [OPTIONS]
 | `--interval`      | Interval for kline-class data types                    |
 | `--keep-failed`   | Keep failed files instead of deleting them             |
 | `-n` / `--dry-run`| Scan without verifying                                 |
+| `--json`         | Emit the structured verification result described below |
 | `--progress-bar`  | Show progress bar on stderr                            |
+
+With `--json`, the envelope uses `command: "verify"`. Counts describe ZIP verification
+targets; checksums are not separate verification targets.
+
+| Mode | Required `summary` fields | Additional result field |
+|------|---------------------------|-------------------------|
+| Dry-run | `total_zips`, `to_verify`, `skipped`, `orphan_zips`, `orphan_checksums` | `to_verify`: absolute ZIP path strings awaiting verification. |
+| Real run | `total_zips`, `verified`, `failed`, `skipped`, `orphan_zips`, `orphan_checksums` | `failed_details`: records containing absolute `path` and the workflow's failure `detail`. |
+
+Dry-run only scans: no hashing, cleanup, or marker changes. It satisfies
+`total_zips = to_verify + skipped + orphan_zips`; `summary.to_verify` equals the plan length.
+Real runs satisfy `total_zips = verified + failed + skipped + orphan_zips`; `summary.failed`
+equals the detail-array length. Each mode omits the other mode's fields. Successful and
+skipped files have no manifests.
+
+Paths are absolute, using the invocation working directory for a relative Archive home.
+Formatting requires no file existence, leaves symlinks unresolved, and keeps filesystem
+targets unchanged. A path may name an already deleted file and does not establish existence
+or Verified status. Failed ZIPs and their checksums are deleted by default; `--keep-failed`
+retains them. Either way, JSON retains their paths and details before exit `2`.
+
+Orphan ZIPs are kept with their verification markers cleared. Orphan checksums are deleted
+with related markers cleared. The two orphan counts describe artifacts, rather than the
+number of markers deleted: discoveries in dry-run, artifacts processed in real runs.
+An orphan ZIP counts even without an existing marker. Orphan checksums are excluded from
+`total_zips`. Orphan cleanup alone exits `0` and does not count as a verification failure.
+
+```bash
+binance-datatool -v --archive-home ./archive verify um --freq monthly --type fundingRate --dry-run --json BTCUSDT
+binance-datatool -v --archive-home ./archive verify um --freq monthly --type fundingRate --json BTCUSDT
+```
 
 | Situation | Exit code |
 |-----------|-----------|
