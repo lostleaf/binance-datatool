@@ -51,6 +51,29 @@ symbol_dir = create_symbol_archive_dir(
 | `remove_orphan_checksum` | `(checksum_name) -> None` | Delete an orphan checksum file. |
 | `scan` | `() -> SymbolScanResult` | Scan the directory and classify local verify work (see below). |
 
+### Download comparison support
+
+`download_snapshot(names: Collection[str])` creates an operation-local reader for requested
+object names and their `.aria2` siblings. The download workflow uses its internal `stat(name)`
+and `control_exists(name)` operations without performing verification pairing, marker freshness
+checks, or orphan classification.
+
+Selections of at most 16 names use direct lookups: one object stat supplies both size and
+mtime. Larger selections open the directory once, retaining only requested object/control
+entries. Iteration stops after eight unrelated initial entries, or after visiting four times
+the requested object/control-name count; unresolved names then use direct lookups. Complete
+scans recognize absent names and ordinary control entries without additional stat calls.
+Metadata is read lazily in caller order, and the workflow releases each snapshot after its
+last comparison. Nothing is cached across operations.
+
+Object metadata and control existence follow symlinks. Dangling objects are absent; dangling
+control symlinks are absent too. Exceptional object metadata lookups delegate to the running
+Python's `Path.exists()` policy: selected errors are treated as absence through Python 3.13,
+and all `OSError` failures are treated as absence in Python 3.14. If opening or iterating
+the directory fails, the reader discards partial metadata and uses direct lookups. Individual
+path access and errors retain the same runtime policy as comparisons without enumeration. The [comparison benchmark](../../../benchmarks/README.md#download-comparison)
+records the sparse-selection refinement and its measured range.
+
 ### `scan()`
 
 Reads the symbol directory once with `os.scandir`, classifying entry names and

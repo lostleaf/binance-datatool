@@ -1,5 +1,73 @@
 # Benchmarks
 
+## Download comparison
+
+Run from the repository root with the project's environment:
+
+```bash
+uv run python benchmarks/download_comparison.py --objects 20000 --directories 10 --repeats 7
+```
+
+The maintained script loads `ArchiveDownloadWorkflow` from pinned revision
+`c9f9aa1e66bf4790f206c2c305729eeeb42bf524` through Git and compares its local comparison
+method with the current checkout. `--baseline` selects another revision, and `--temp-root`
+selects the scratch filesystem. The source path identifies the imported candidate. Fixtures
+are disposable and shared by both implementations. Listing, hashing, transfer, and fixture
+construction are excluded from measurement.
+
+All workloads use ten directories and 20,000 remotely sized four-byte objects, alternating
+ZIP/checksum filenames. Each directory contains 2,000 object names:
+
+| Workload | Remote selection | Local entries | Expected classification |
+|----------|------------------|---------------|-------------------------|
+| Dense | All 20,000 objects | 20,000 complete objects | 20,000 skipped |
+| Mixed | All 20,000 objects | 16,000 objects plus 4,000 ordinary `.aria2` controls | 4,000 new, 12,000 updated, 4,000 skipped |
+| Sparse | Every 200th name, 100 objects total (ten checksums per directory) | 20,000 complete objects | 100 skipped |
+
+Mixed updates comprise 4,000 older objects, 4,000 wrong-sized objects, and 4,000 complete-sized
+objects with controls. Equal/newer mtimes, symlinks, marker independence, real permissions,
+filesystem faults, dry-run preservation, and missing directories are covered by workflow
+tests. Each workload also interleaves two listing failures in a fixed order.
+
+Each implementation receives one warm-up. Seven measured rounds alternate execution order,
+and every result must equal the baseline's complete ordered plan: remote metadata, local
+paths, reasons, skipped/remote counts, and ordered listing failures. A separate `tracemalloc`
+run records peak Python allocations for the whole comparison, including selected result
+objects and snapshots; it excludes existing remote input and filesystem page cache. This is
+an allocation peak, not process RSS. No machine-dependent threshold runs in ordinary CI.
+
+### Recorded result
+
+Measured on 2026-11-15 with Python 3.13.18, Linux 7.0.0-42-generic x86_64, glibc 2.39,
+AMD Ryzen 9 9950X (32 reported CPUs), and `/tmp` on ext4 at `/dev/nvme0n1p2`. Candidate code
+commit: `68ede56`. Every complete ordered classification matched.
+
+| Workload / implementation | Seven warm-cache timings (ms) | Median (ms) | Min–max (ms) | Peak Python allocation (KiB) |
+|---------------------------|-------------------------------|-------------|--------------|------------------------------|
+| Dense baseline | 164.658, 160.656, 160.827, 164.563, 162.554, 162.092, 160.387 | 162.092 | 160.387–164.658 | 2.0 |
+| Dense candidate | 86.903, 83.847, 85.920, 90.848, 85.839, 83.526, 85.181 | 85.839 | 83.526–90.848 | 8414.4 |
+| Mixed baseline | 152.082, 154.102, 180.256, 172.236, 154.110, 156.620, 156.561 | 156.561 | 152.082–180.256 | 8033.9 |
+| Mixed candidate | 97.376, 97.475, 97.323, 98.025, 96.600, 115.621, 118.380 | 97.475 | 96.600–118.380 | 10426.3 |
+| Sparse baseline | 0.785, 0.775, 0.770, 0.774, 0.773, 0.779, 0.774 | 0.774 | 0.770–0.785 | 2.0 |
+| Sparse candidate | 0.770, 0.766, 0.773, 0.774, 0.770, 0.764, 0.769 | 0.770 | 0.764–0.774 | 19.8 |
+
+Dense comparison improved by 1.89 times and mixed comparison by 1.61 times, with disjoint
+timing ranges. Sparse timings overlap. Dense snapshots add about 8.2 MiB of peak Python
+allocation; mixed adds about 2.3 MiB above its existing selected-result allocation. Only
+requested entries are retained, and completed directories release their snapshots.
+
+An initial bounded-enumeration candidate still regressed this sparse workload from a median
+0.783 ms to 1.781 ms. Opening a directory remained costly even after bounding unrelated entry
+visits. The final implementation therefore refines the planned one-enumeration approach:
+selections of at most 16 names per directory bypass enumeration and use one direct object
+stat plus a control existence check. This measured workload selects ten names per directory;
+16 is a conservative implementation threshold, not a universal filesystem crossover. Larger
+selections bound unrelated visits and fall back to direct lookups when the snapshot is partial.
+
+These are warm-cache comparison measurements. They establish neither cold-cache performance
+nor end-to-end download throughput, and the earlier roughly four-times prototype gain is
+supporting evidence rather than a promised ratio.
+
 ## Directory scans
 
 Run from the repository root with the project's environment:

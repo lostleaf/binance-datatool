@@ -205,7 +205,16 @@ async def run(self) -> DiffResult | DownloadResult
    `archive_home / Path(remote.key)`. A file is skipped only when its local copy exists,
    its size matches the remote listing, it has no sibling `.aria2` control file, and
    `local_mtime >= remote_last_modified`; otherwise it is classified as `"new"`
-   or `"updated"`.
+   when absent or `"updated"` when present. ZIP and checksum objects use the same rule.
+   Directory metadata comes from operation-local
+   [`SymbolArchiveDir` snapshots](../archive/symbol_dir.md#download-comparison-support),
+   with direct lookups for small selections and bounded enumeration for larger selections.
+   Ordinary objects reuse one stat result for size and mtime. Comparison follows symlinks:
+   dangling objects are `"new"`, and dangling control symlinks allow an otherwise complete
+   object to be skipped. Remote object order, caller Symbol order, and listing-failure order
+   are retained. Comparison is read-only and does not consult verification markers or hash
+   local objects. The [benchmark](../../../benchmarks/README.md#download-comparison) measures
+   dense, mixed, and sparse comparison separately from listing and transfer.
 3. In dry-run mode, returns a `DiffResult` immediately.
 4. An empty transfer plan returns a `DownloadResult` without requiring aria2, retaining
    any listing errors. For a nonempty built-in plan, prepares the downloader by resolving

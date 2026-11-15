@@ -21,6 +21,60 @@ if TYPE_CHECKING:
 __all__ = ["SymbolArchiveDir", "create_symbol_archive_dir"]
 
 
+class _DownloadSnapshot:
+    """Operation-local requested entries, with bounded work for sparse selections."""
+
+    def __init__(self, path: Path, names: Collection[str]) -> None:
+        self.path = path
+        self.entries: dict[str, os.DirEntry[str]] = {}
+        self.complete = False
+        # Opening a large directory costs more than direct lookup for small
+        # selections, even when iteration is bounded (see comparison benchmark).
+        if len(names) <= 16:
+            return
+        wanted = set(names)
+        wanted.update(f"{name}.aria2" for name in names)
+        visit_limit = max(8, len(wanted) * 4)
+        try:
+            with os.scandir(path) as entries:
+                for index, entry in enumerate(entries):
+                    if entry.name in wanted:
+                        self.entries[entry.name] = entry
+                    if index >= visit_limit or (index >= 7 and not self.entries):
+                        return
+        except OSError:
+            # Enumeration can fail while individual paths remain accessible.
+            # Discard partial metadata and retain Path.exists/stat error policy
+            # through direct lookups, including this runtime's absent-path rules.
+            self.entries.clear()
+            return
+        self.complete = True
+
+    def stat(self, name: str) -> os.stat_result | None:
+        """Follow links and reuse entry metadata, preserving Path.exists errors."""
+        entry = self.entries.get(name)
+        if entry is None and self.complete:
+            return None
+        try:
+            return entry.stat() if entry is not None else os.stat(os.path.join(self.path, name))
+        except OSError:
+            # Path.exists ignores selected errors through 3.13 and all OSError
+            # failures from 3.14. Delegate only exceptional cases to that policy.
+            if not (self.path / name).exists():
+                return None
+            raise
+
+    def control_exists(self, name: str) -> bool:
+        """Recognize ordinary control entries without a separate stat query."""
+        name = f"{name}.aria2"
+        entry = self.entries.get(name)
+        if entry is not None and not entry.is_symlink():
+            return True
+        if entry is None and self.complete:
+            return False
+        return (self.path / name).exists()
+
+
 @dataclass(slots=True)
 class SymbolScanResult:
     """Per-symbol scan outcome used internally by archive workflows."""
@@ -97,6 +151,15 @@ class SymbolArchiveDir:
     def __init__(self, path: Path) -> None:
         """Initialize the symbol archive directory helper."""
         self.path = path
+
+    def download_snapshot(self, names: Collection[str]) -> _DownloadSnapshot:
+        """Read requested download entries once without verification classification.
+
+        Dense selections reuse directory entries. Sparse selections bound unrelated
+        visits and use direct lookups for entries outside the partial snapshot.
+        Metadata is read lazily so callers retain their comparison order.
+        """
+        return _DownloadSnapshot(self.path, names)
 
     def zip_path(self, zip_name: str) -> Path:
         """Return the local path for a zip file in this directory."""

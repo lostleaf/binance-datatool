@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
 import time
@@ -331,6 +332,308 @@ async def test_archive_download_workflow_builds_new_updated_and_skipped_diff(tmp
     assert not (tmp_path / remote_new.key).exists()
     assert updated_local.read_text(encoding="utf-8") == "old checksum"
     assert skipped_local.read_bytes() == b"x" * 100
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("extra_objects", [0, 20])
+async def test_download_comparison_preserves_order_and_filesystem(
+    tmp_path: Path, extra_objects: int
+) -> None:
+    """Mixed objects retain remote order, reasons, failures, and read-only effects."""
+    stamp = datetime(2026, 4, 1, tzinfo=UTC)
+    cases = [
+        ("absent.zip", None, 0),
+        ("equal.zip.CHECKSUM", b"data", 0),
+        ("newer.zip", b"data", 1),
+        ("older.zip.CHECKSUM", b"data", -1),
+        ("wrong-size.zip", b"x", 1),
+        ("partial.zip.CHECKSUM", b"data", 1),
+    ]
+    remote_files = []
+    for name, content, offset in cases:
+        remote = ArchiveFile(key=f"data/Z/{name}", size=4, last_modified=stamp)
+        remote_files.append(remote)
+        if content is not None:
+            path = tmp_path / remote.key
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+            os.utime(path, (stamp.timestamp() + offset,) * 2)
+    (tmp_path / "data/Z/partial.zip.CHECKSUM.aria2").write_bytes(b"partial")
+    (tmp_path / "data/Z/older.zip.CHECKSUM.9999999999.verified").touch()
+    for index in range(extra_objects):
+        path = tmp_path / f"data/Z/extra{index}.zip"
+        path.write_bytes(b"data")
+        os.utime(path, (stamp.timestamp(),) * 2)
+        remote_files.append(ArchiveFile(key=f"data/Z/{path.name}", size=4, last_modified=stamp))
+    missing = ArchiveFile(key="data/A/missing.zip.CHECKSUM", size=4, last_modified=stamp)
+    before = {
+        path: (path.read_bytes(), path.stat()) for path in tmp_path.rglob("*") if path.is_file()
+    }
+    result = await ArchiveDownloadWorkflow(
+        trade_type=TradeType.um,
+        data_freq=DataFrequency.monthly,
+        data_type=DataType.funding_rate,
+        symbols=["Z", "FAIL2", "A", "FAIL1"],
+        archive_home=tmp_path,
+        dry_run=True,
+        client=FakeArchiveClient(
+            files_by_symbol={"Z": remote_files, "A": [missing]},
+            errors_by_symbol={"FAIL1": OSError("first"), "FAIL2": OSError("second")},
+        ),
+    ).run()
+    assert isinstance(result, DiffResult)
+    assert (result.total_remote, result.skipped, result.listing_failed_symbols) == (
+        7 + extra_objects,
+        2 + extra_objects,
+        2,
+    )
+    assert [(entry.remote, entry.local_path, entry.reason) for entry in result.to_download] == [
+        (remote_files[0], tmp_path / remote_files[0].key, "new"),
+        (remote_files[3], tmp_path / remote_files[3].key, "updated"),
+        (remote_files[4], tmp_path / remote_files[4].key, "updated"),
+        (remote_files[5], tmp_path / remote_files[5].key, "updated"),
+        (missing, tmp_path / missing.key, "new"),
+    ]
+    assert [(error.symbol, error.error) for error in result.listing_errors] == [
+        ("FAIL2", "second"),
+        ("FAIL1", "first"),
+    ]
+    assert set(tmp_path.rglob("*")) == set(before) | {tmp_path / "data", tmp_path / "data/Z"}
+    for path, (content, stat) in before.items():
+        assert path.read_bytes() == content
+        assert (path.stat().st_mtime_ns, path.stat().st_size) == (stat.st_mtime_ns, stat.st_size)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("extra_objects", [0, 20])
+async def test_download_comparison_follows_symlinks(tmp_path: Path, extra_objects: int) -> None:
+    """Dangling objects are new; dangling controls do not force an update."""
+    target = tmp_path / "target"
+    target.write_bytes(b"data")
+    names = ["valid.zip", "dangling.zip", "control.zip.CHECKSUM", "loop.zip"]
+    try:
+        (tmp_path / names[0]).symlink_to(target)
+        (tmp_path / names[1]).symlink_to(tmp_path / "missing")
+        (tmp_path / names[3]).symlink_to(names[3])
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+    (tmp_path / names[2]).write_bytes(b"data")
+    (tmp_path / f"{names[2]}.aria2").symlink_to(tmp_path / "missing-control")
+    files = [
+        ArchiveFile(key=name, size=4, last_modified=datetime(2000, 1, 1, tzinfo=UTC))
+        for name in names
+    ]
+    for index in range(extra_objects):
+        path = tmp_path / f"extra{index}.zip"
+        path.write_bytes(b"data")
+        files.append(
+            ArchiveFile(key=path.name, size=4, last_modified=datetime(2000, 1, 1, tzinfo=UTC))
+        )
+    result = await ArchiveDownloadWorkflow(
+        TradeType.um,
+        DataFrequency.monthly,
+        DataType.funding_rate,
+        ["A"],
+        tmp_path,
+        dry_run=True,
+        client=FakeArchiveClient(files_by_symbol={"A": files}),
+    ).run()
+    assert (result.total_remote, result.skipped) == (4 + extra_objects, 2 + extra_objects)
+    assert [(entry.remote.key, entry.reason) for entry in result.to_download] == [
+        ("dangling.zip", "new"),
+        ("loop.zip", "new"),
+    ]
+    assert (tmp_path / names[1]).is_symlink()
+    assert (tmp_path / f"{names[2]}.aria2").is_symlink()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", [0o000, 0o111])
+@pytest.mark.parametrize("extra_objects", [0, 20])
+async def test_download_comparison_directory_permissions(
+    tmp_path: Path, mode: int, extra_objects: int
+) -> None:
+    """Use Path.exists runtime semantics when enumeration is not permitted."""
+    directory = tmp_path / "restricted"
+    directory.mkdir()
+    local = directory / "file.zip"
+    local.write_bytes(b"data")
+    remote = ArchiveFile(
+        key="restricted/file.zip", size=4, last_modified=datetime(2000, 1, 1, tzinfo=UTC)
+    )
+    files = [remote] + [
+        ArchiveFile(
+            key=f"restricted/missing{index}.zip", size=4, last_modified=remote.last_modified
+        )
+        for index in range(extra_objects)
+    ]
+    directory.chmod(mode)
+    try:
+        try:
+            exists = local.exists()
+        except PermissionError:
+            expected_error = True
+        else:
+            expected_error = False
+        workflow = ArchiveDownloadWorkflow(
+            TradeType.um,
+            DataFrequency.monthly,
+            DataType.funding_rate,
+            ["A"],
+            tmp_path,
+            dry_run=True,
+            client=FakeArchiveClient(files_by_symbol={"A": files}),
+        )
+        if expected_error:
+            with pytest.raises(PermissionError):
+                await workflow.run()
+        else:
+            result = await workflow.run()
+            assert result.skipped == int(exists)
+            assert [entry.reason for entry in result.to_download] == (
+                ["new"] * (extra_objects + int(not exists))
+            )
+    finally:
+        directory.chmod(0o700)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error_number", [errno.EACCES, errno.EIO, errno.ENOENT, errno.ENOTDIR, errno.ELOOP]
+)
+@pytest.mark.parametrize("extra_objects", [0, 20])
+async def test_download_comparison_stat_errors_follow_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error_number: int,
+    extra_objects: int,
+) -> None:
+    """Metadata faults retain the supported runtime's Path.exists policy."""
+    path = tmp_path / "fault.zip"
+    path.write_bytes(b"data")
+    real_stat = os.stat
+
+    def failing_stat(target, *args, **kwargs):
+        if os.fspath(target) == str(path):
+            raise OSError(error_number, "injected metadata failure", str(path))
+        return real_stat(target, *args, **kwargs)
+
+    files = [ArchiveFile(key="fault.zip", size=4, last_modified=datetime(2000, 1, 1, tzinfo=UTC))]
+    files.extend(
+        ArchiveFile(key=f"missing{index}.zip", size=4, last_modified=files[0].last_modified)
+        for index in range(extra_objects)
+    )
+    # Inject errors through OS interfaces; assertions remain at the dry-run seam.
+    monkeypatch.setattr(os, "stat", failing_stat)
+    workflow = ArchiveDownloadWorkflow(
+        TradeType.um,
+        DataFrequency.monthly,
+        DataType.funding_rate,
+        ["A"],
+        tmp_path,
+        dry_run=True,
+        client=FakeArchiveClient(files_by_symbol={"A": files}),
+    )
+    if extra_objects:
+        # Inject the same metadata fault at the OS directory-entry interface.
+        real_scandir = os.scandir
+
+        class Entries:
+            def __init__(self, directory):
+                self.entries = real_scandir(directory)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.entries.close()
+
+            def __iter__(self):
+                for entry in self.entries:
+                    if entry.name == path.name:
+                        yield SimpleNamespace(name=entry.name, stat=lambda: failing_stat(path))
+                    else:
+                        yield entry
+
+        monkeypatch.setattr(os, "scandir", Entries)
+    try:
+        path.exists()
+    except OSError:
+        with pytest.raises(OSError) as caught:
+            await workflow.run()
+        assert caught.value.errno == error_number
+    else:
+        result = await workflow.run()
+        assert result.skipped == 0
+        assert [entry.reason for entry in result.to_download] == ["new"] * (1 + extra_objects)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["opening", "iteration"])
+@pytest.mark.parametrize("error_number", [None, errno.EIO, errno.EACCES, errno.ENOENT])
+async def test_download_comparison_falls_back_when_directory_scan_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    error_number: int | None,
+) -> None:
+    """Scan faults retain direct path success and runtime-specific error policy."""
+    files = [
+        ArchiveFile(key=f"file{index}.zip", size=4, last_modified=datetime(2000, 1, 1, tzinfo=UTC))
+        for index in range(20)
+    ]
+    for remote in files:
+        (tmp_path / remote.key).write_bytes(b"data")
+    real_scandir = os.scandir
+
+    class FailingEntries:
+        def __enter__(self):
+            self.entries = real_scandir(tmp_path)
+            return self
+
+        def __exit__(self, *args):
+            self.entries.close()
+
+        def __iter__(self):
+            yield next(self.entries)
+            raise OSError(errno.EIO, "injected iteration failure")
+
+    def failed_scandir(path):
+        if phase == "opening":
+            raise OSError(errno.EIO, "injected directory failure", os.fspath(path))
+        return FailingEntries()
+
+    monkeypatch.setattr(os, "scandir", failed_scandir)
+    real_stat = os.stat
+    faulty_path = tmp_path / files[0].key
+
+    def failing_stat(target, *args, **kwargs):
+        if error_number is not None and os.fspath(target) == str(faulty_path):
+            raise OSError(error_number, "injected path failure", str(faulty_path))
+        return real_stat(target, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", failing_stat)
+    workflow = ArchiveDownloadWorkflow(
+        TradeType.um,
+        DataFrequency.monthly,
+        DataType.funding_rate,
+        ["A"],
+        tmp_path,
+        dry_run=True,
+        client=FakeArchiveClient(files_by_symbol={"A": files}),
+    )
+    try:
+        exists = faulty_path.exists()
+    except OSError:
+        with pytest.raises(OSError) as caught:
+            await workflow.run()
+        assert caught.value.errno == error_number
+    else:
+        result = await workflow.run()
+        assert result.skipped == 19 + int(exists)
+        assert [(entry.remote.key, entry.reason) for entry in result.to_download] == (
+            [] if exists else [(files[0].key, "new")]
+        )
 
 
 @pytest.mark.asyncio

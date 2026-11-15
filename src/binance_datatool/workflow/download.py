@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -84,6 +85,21 @@ class ArchiveDownloadWorkflow:
         to_download: list[DiffEntry] = []
         skipped = 0
         listing_errors: list[SymbolListingError] = []
+        names_by_dir: dict[str, set[str]] = defaultdict(set)
+        remaining_by_dir: dict[str, int] = defaultdict(int)
+        locations_by_key: dict[str, tuple[str, str]] = {}
+        for entry in list_result.per_symbol:
+            if entry.error is None:
+                for remote_file in entry.files:
+                    # Normalize separators and dots with Path without allocating a
+                    # full local path for every object that will be skipped.
+                    key = str(Path(remote_file.key))
+                    parent, name = os.path.split(key)
+                    parent = parent or "."
+                    locations_by_key[remote_file.key] = (parent, name)
+                    names_by_dir[parent].add(name)
+                    remaining_by_dir[parent] += 1
+        snapshots = {}
 
         for entry in list_result.per_symbol:
             if entry.error is not None:
@@ -91,17 +107,27 @@ class ArchiveDownloadWorkflow:
                 continue
 
             for remote_file in entry.files:
-                local_path = self.archive_home / Path(remote_file.key)
+                parent, name = locations_by_key[remote_file.key]
+                if parent not in snapshots:
+                    snapshots[parent] = SymbolArchiveDir(
+                        self.archive_home / parent
+                    ).download_snapshot(names_by_dir[parent])
+                snapshot = snapshots[parent]
+                stat = snapshot.stat(name)
+                remaining_by_dir[parent] -= 1
+                if remaining_by_dir[parent] == 0:
+                    del snapshots[parent]
                 if (
-                    local_path.exists()
-                    and local_path.stat().st_size == remote_file.size
-                    and not local_path.with_name(f"{local_path.name}.aria2").exists()
-                    and local_path.stat().st_mtime >= remote_file.last_modified.timestamp()
+                    stat is not None
+                    and stat.st_size == remote_file.size
+                    and not snapshot.control_exists(name)
+                    and stat.st_mtime >= remote_file.last_modified.timestamp()
                 ):
                     skipped += 1
                     continue
 
-                reason: Literal["new", "updated"] = "updated" if local_path.exists() else "new"
+                reason: Literal["new", "updated"] = "updated" if stat is not None else "new"
+                local_path = self.archive_home / remote_file.key
                 to_download.append(
                     DiffEntry(remote=remote_file, local_path=local_path, reason=reason)
                 )
