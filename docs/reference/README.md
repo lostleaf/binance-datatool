@@ -47,6 +47,7 @@ from binance_datatool.common.path import ARCHIVE_HOME_ENV_VAR
 | [workflow](workflow/README.md) | Business logic orchestration for archive workflows. |
 | [cli](cli/) | Typer CLI overview, verbosity, and sub-command index. |
 | [cli commands](cli/archive.md) | Archive commands (`list-symbols`, `list-files`, `download`, `verify`). |
+| [performance](performance.md) | Recorded performance and interruption measurements behind design decisions. |
 
 ---
 

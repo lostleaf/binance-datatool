@@ -36,7 +36,6 @@ The Linux signal regressions launch real CLI subprocesses and spawned workers ag
 archives. They wait for observable progress or controlled submission/startup readiness, drain
 stdout and stderr concurrently, send one process-group SIGINT, and force cleanup only on harness
 failure. The finite harness deadline is a test safeguard, not a product shutdown guarantee.
-The maintained [signal harness](../../benchmarks/verify_interrupt.py) also supports scale runs.
 
 ## Shared Test Support in `conftest.py`
 

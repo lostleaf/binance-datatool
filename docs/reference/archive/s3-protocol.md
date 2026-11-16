@@ -53,7 +53,7 @@ GET https://s3-ap-northeast-1.amazonaws.com/data.binance.vision
 | **Retry with backoff** | HTTP requests use `tenacity` with exponential backoff (up to 5 attempts), retrying only on `aiohttp.ClientError` and `asyncio.TimeoutError`. |
 | **Timestamp parsing** | `Contents.LastModified` strings are parsed via `datetime.fromisoformat` (with a `Z` → `+00:00` substitution) so every `ArchiveFile.last_modified` is tz-aware in UTC. |
 
-The [listing parser benchmark](../../../benchmarks/README.md#xml-listing-parser)
+The [listing parser measurement](../performance.md#xml-listing-parser)
 compares complete file-record conversion against the original parser on the same
 1,000-entry page.
 

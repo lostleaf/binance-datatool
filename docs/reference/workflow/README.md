@@ -213,7 +213,7 @@ async def run(self) -> DiffResult | DownloadResult
    dangling objects are `"new"`, and dangling control symlinks allow an otherwise complete
    object to be skipped. Remote object order, caller Symbol order, and listing-failure order
    are retained. Comparison is read-only and does not consult verification markers or hash
-   local objects. The [benchmark](../../../benchmarks/README.md#download-comparison) measures
+   local objects. The [recorded measurement](../performance.md#download-comparison) covers
    dense, mixed, and sparse comparison separately from listing and transfer.
 3. In dry-run mode, returns a `DiffResult` immediately.
 4. An empty transfer plan returns a `DownloadResult` without requiring aria2, retaining
@@ -341,7 +341,7 @@ local I/O and CPU work — no network access is needed.
    `.CHECKSUM` sibling), or orphan checksum (missing `.zip` sibling). Each path
    list is sorted within its symbol; missing directories contribute no work.
    Scans run serially and report progress via the shared progress-reporting framework.
-   The [scan benchmark](../../../benchmarks/README.md) records classification checks,
+   The [scan measurement](../performance.md#directory-scans) records classification checks,
    repeated timings, and the serial-versus-threaded comparison.
 2. In **dry-run mode**, returns a `VerifyDiffResult` immediately.
 3. **Orphan cleanup** — orphan zips have their markers cleared (zip file is kept);
@@ -373,7 +373,7 @@ repeated. Progress can slightly undercount saved successes if interrupted betwee
 creation and reporting. The next run's scan skips retained fresh markers; dry-run shows the
 unrecorded remainder. Dry-run performs no hashing, worker startup, cleanup, or marker writes.
 An interrupted run returns no completed `VerifyResult`; the CLI exits `130` and emits no
-completed-result JSON. See the [signal benchmark](../../../benchmarks/README.md#verification-interruption)
+completed-result JSON. See the [interruption measurement](../performance.md#verification-interruption)
 for the diagnosed shutdown path and measured workloads.
 
 ### Timestamped marker protocol

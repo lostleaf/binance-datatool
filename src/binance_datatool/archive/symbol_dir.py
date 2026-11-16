@@ -29,7 +29,7 @@ class _DownloadSnapshot:
         self.entries: dict[str, os.DirEntry[str]] = {}
         self.complete = False
         # Opening a large directory costs more than direct lookup for small
-        # selections, even when iteration is bounded (see comparison benchmark).
+        # selections, even when iteration is bounded (see docs/reference/performance.md).
         if len(names) <= 16:
             return
         wanted = set(names)

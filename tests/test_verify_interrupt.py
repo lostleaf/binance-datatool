@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import json
 import os
+import queue
 import re
+import signal
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -18,14 +21,131 @@ from binance_datatool.common import DataFrequency, DataType, TradeType
 from binance_datatool.common.progress import LogReporter
 from binance_datatool.workflow import ArchiveVerifyWorkflow
 
-# Load the repository-only harness independently of the pytest entrypoint's sys.path.
-harness_spec = importlib.util.spec_from_file_location(
-    "verify_interrupt_harness", Path(__file__).parents[1] / "benchmarks/verify_interrupt.py"
-)
-assert harness_spec is not None and harness_spec.loader is not None
-harness = importlib.util.module_from_spec(harness_spec)
-harness_spec.loader.exec_module(harness)
-CHILD, populate, run_cli = harness.CHILD, harness.populate, harness.run_cli
+# Four reported CPUs select two workers through the existing default.
+CHILD = """
+import os
+os.cpu_count = lambda: 4
+from binance_datatool.cli import app
+app()
+"""
+
+# Forces cleanup on harness failure; this is not a product shutdown limit.
+SIGNAL_DEADLINE = 60
+
+
+def populate(home: Path, count: int, size: int) -> Path:
+    """Create independent small pairs; hard-link larger finite hashing payloads."""
+    directory = home / "data/spot/daily/trades/BTCUSDT"
+    directory.mkdir(parents=True)
+    payload = home / "payload"
+    digest = hashlib.sha256()
+    block = b"x" * min(size, 1024 * 1024)
+    with payload.open("wb") as stream:
+        remaining = size
+        while remaining:
+            chunk = block[:remaining]
+            stream.write(chunk)
+            digest.update(chunk)
+            remaining -= len(chunk)
+    for index in range(count):
+        path = directory / f"{index:06}.zip"
+        if size <= 8192:
+            path.write_bytes(block)
+        else:
+            os.link(payload, path)
+        path.with_suffix(".zip.CHECKSUM").write_text(digest.hexdigest())
+    return directory
+
+
+def group_members(group: int) -> list[int]:
+    """List living group members on Linux, excluding already-exited zombies."""
+    members = []
+    for path in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            fields = path.read_text().rsplit(")", 1)[1].split()
+            if fields[0] != "Z" and int(fields[2]) == group:
+                members.append(int(path.parent.name))
+        except (FileNotFoundError, ProcessLookupError):
+            pass
+    return members
+
+
+def run_cli(home: Path, *, interrupt=True, json_output=False, child=CHILD) -> dict:
+    """Drain both streams and signal after observable unfinished verification."""
+    command = [
+        sys.executable,
+        "-c",
+        child,
+        "-v",
+        "--archive-home",
+        str(home),
+        "verify",
+        "spot",
+        "BTCUSDT",
+        "--type",
+        "trades",
+    ]
+    if json_output:
+        command.append("--json")
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True
+    )
+    events = queue.Queue()
+    output = {"stdout": [], "stderr": []}
+
+    def drain(name, stream):
+        for line in stream:
+            output[name].append(line)
+            events.put(line)
+        stream.close()
+
+    threads = [
+        threading.Thread(target=drain, args=(name, stream), daemon=True)
+        for name, stream in (("stdout", process.stdout), ("stderr", process.stderr))
+    ]
+    for thread in threads:
+        thread.start()
+    start = time.monotonic()
+    signaled = False
+    acknowledged = 0
+    survivors = []
+    try:
+        while process.poll() is None and time.monotonic() - start < SIGNAL_DEADLINE:
+            try:
+                line = events.get(timeout=0.05)
+            except queue.Empty:
+                line = ""
+            match = re.search(r"\[Verify\].*?\((\d+)/(\d+)\).*?ok=(\d+)", line)
+            if match:
+                acknowledged = max(acknowledged, int(match[3]))
+            ready = match and 0 < int(match[1]) < int(match[2])
+            if interrupt and not signaled and (ready or "SIGNAL_READY" in line):
+                signaled = True
+                os.killpg(process.pid, signal.SIGINT)
+        timed_out = process.poll() is None
+        if timed_out:
+            os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=10)
+        cleanup_deadline = time.monotonic() + 3
+        while group_members(process.pid) and time.monotonic() < cleanup_deadline:
+            time.sleep(0.01)
+        survivors = group_members(process.pid)
+    finally:
+        if group_members(process.pid):
+            os.killpg(process.pid, signal.SIGKILL)
+        for thread in threads:
+            thread.join(timeout=5)
+    reported_successes = re.findall(r"\[Verify\].*?ok=(\d+)", "".join(output["stderr"]))
+    acknowledged = max([acknowledged, *(int(count) for count in reported_successes)])
+    return dict(
+        code=process.returncode,
+        signaled=signaled,
+        acknowledged=acknowledged,
+        stdout="".join(output["stdout"]),
+        stderr="".join(output["stderr"]),
+        survivors=survivors,
+        timed_out=timed_out,
+    )
 
 
 def test_verify_persists_before_progress(tmp_path, monkeypatch):
@@ -274,37 +394,3 @@ def test_verify_dry_run_never_starts_workers_or_changes_files(tmp_path, monkeypa
     assert result.orphan_zips == [directory / "orphan.zip"]
     assert result.orphan_checksums == [directory / "missing.zip.CHECKSUM"]
     assert {path: path.read_bytes() for path in directory.iterdir()} == before
-
-
-@pytest.mark.parametrize(
-    "option,value",
-    [
-        ("--size", "-1"),
-        ("--count", "0"),
-        ("--repeat", "0"),
-        ("--deadline", "0"),
-        ("--deadline", "nan"),
-        ("--deadline", "inf"),
-    ],
-)
-def test_signal_harness_rejects_invalid_workloads_before_creation(tmp_path, option, value):
-    """Invalid CLI workloads fail promptly without creating disposable fixtures."""
-    result = subprocess.run(
-        [sys.executable, str(Path(harness.__file__)), option, value],
-        capture_output=True,
-        text=True,
-        timeout=5,
-        env={**os.environ, "TMPDIR": str(tmp_path)},
-    )
-    assert result.returncode == 2
-    assert option in result.stderr
-    assert result.stdout == ""
-    assert list(tmp_path.iterdir()) == []
-
-
-@pytest.mark.parametrize("count,size", [(0, 1), (-1, 1), (1, -1)])
-def test_signal_fixture_rejects_invalid_sizes_without_writing(tmp_path, count, size):
-    """Fixture callers cannot create empty workloads or loop on negative sizes."""
-    with pytest.raises(ValueError):
-        populate(tmp_path, count, size)
-    assert list(tmp_path.iterdir()) == []

@@ -71,7 +71,7 @@ control symlinks are absent too. Exceptional object metadata lookups delegate to
 Python's `Path.exists()` policy: selected errors are treated as absence through Python 3.13,
 and all `OSError` failures are treated as absence in Python 3.14. If opening or iterating
 the directory fails, the reader discards partial metadata and uses direct lookups. Individual
-path access and errors retain the same runtime policy as comparisons without enumeration. The [comparison benchmark](../../../benchmarks/README.md#download-comparison)
+path access and errors retain the same runtime policy as comparisons without enumeration. The [comparison measurement](../performance.md#download-comparison)
 records the sparse-selection refinement and its measured range.
 
 ### `scan()`
