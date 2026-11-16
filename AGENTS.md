@@ -10,8 +10,7 @@
   Keep Python code compatible with Python 3.11.
 - Keep `temp/` materials outside the public package surface and project documentation.
 - Update the relevant documentation when behavior, public interfaces, or contributor workflows
-  change. Commit code before the corresponding documentation, in separate commits unless the
-  user explicitly requests otherwise.
+  change. Use one Conventional Commit per ticket.
 
 ## Task guidance
 

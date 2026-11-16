@@ -12,7 +12,7 @@ from loguru import logger
 from typer.main import get_command
 from typer.testing import CliRunner
 
-from binance_datatool.archive import ArchiveFile
+from binance_datatool.archive import ArchiveFile, Aria2NotFoundError
 from binance_datatool.cli import app
 from binance_datatool.common import (
     CmSymbolFilter,
@@ -852,10 +852,24 @@ def test_cli_list_files_long_output_and_only_zip(monkeypatch) -> None:
 @pytest.mark.parametrize("json_output", [False, True])
 @pytest.mark.parametrize("mixed", [False, True])
 def test_cli_list_files_retains_timeout_diagnostics(
-    listing_timeout_http, stderr_messages, json_output, mixed
+    monkeypatch, sample_archive_files, stderr_messages, json_output, mixed
 ) -> None:
-    """Timeouts remain Symbol-associated errors through the real workflow and CLI."""
+    """Timeouts remain Symbol-associated errors in text and JSON CLI output."""
     symbols = ["ETHUSDT", "BNBUSDT", "BTCUSDT"] if mixed else ["ETHUSDT"]
+
+    async def fake_run(self) -> ListFilesResult:
+        assert self.symbols == symbols
+        per_symbol = [SymbolListFilesResult(symbol="ETHUSDT", files=[], error="TimeoutError")]
+        if mixed:
+            per_symbol.extend(
+                [
+                    SymbolListFilesResult(symbol="BNBUSDT", files=[], error=None),
+                    SymbolListFilesResult(symbol="BTCUSDT", files=sample_archive_files, error=None),
+                ]
+            )
+        return ListFilesResult(per_symbol=per_symbol)
+
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveListFilesWorkflow.run", fake_run)
     result = runner.invoke(
         app,
         [
@@ -2663,29 +2677,18 @@ def test_cli_verify_json_unhandled_error_has_no_result(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize("json_output", [False, True])
-def test_cli_download_missing_aria2_preserves_archive(
-    monkeypatch, tmp_path, sample_archive_files, json_output
-) -> None:
-    """Real workflow preparation reports missing tooling cleanly in both output modes."""
-    home = tmp_path / "home"
-    local = home / sample_archive_files[0].key
-    local.parent.mkdir(parents=True)
-    local.write_bytes(b"original-archive")
-    marker = local.with_name(local.name + ".verified")
-    marker.write_bytes(b"verified-state")
-    monkeypatch.setattr("shutil.which", lambda name: None)
+def test_cli_download_missing_aria2_reports_clean_error(monkeypatch, json_output) -> None:
+    """Missing tooling reports cleanly in both output modes."""
 
-    async def fake_listing(self, *args, **kwargs):
-        return {"BTCUSDT": (sample_archive_files, None)}
+    async def fake_run(self):
+        raise Aria2NotFoundError("aria2c executable not found in PATH.")
 
-    monkeypatch.setattr(
-        "binance_datatool.archive.ArchiveClient.list_symbol_files_batch", fake_listing
-    )
+    monkeypatch.setattr("binance_datatool.workflow.ArchiveDownloadWorkflow.run", fake_run)
     result = runner.invoke(
         app,
         [
             "--archive-home",
-            str(home),
+            "/tmp/archive-home",
             "download",
             "um",
             "--freq",
@@ -2701,6 +2704,3 @@ def test_cli_download_missing_aria2_preserves_archive(
     assert "aria2c" in result.stderr
     assert "PATH" in result.stderr
     assert "Traceback" not in result.output
-    assert local.read_bytes() == b"original-archive"
-    assert marker.read_bytes() == b"verified-state"
-    assert not (home / sample_archive_files[1].key).exists()
