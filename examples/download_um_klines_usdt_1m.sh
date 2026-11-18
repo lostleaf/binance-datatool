@@ -35,7 +35,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[1/3] Listing USD-M perpetual kline symbols (quote=USDT, exclude stable pairs)..." >&2
+echo "[1/3] Listing USDⓈ-M perpetual kline symbols (quote=USDT, exclude stable pairs)..." >&2
 uv run binance-datatool -v list-symbols um \
   --freq daily \
   --type klines \
@@ -47,7 +47,7 @@ uv run binance-datatool -v list-symbols um \
 symbol_count="$(wc -l < "$symbols_file" | tr -d '[:space:]')"
 echo "Selected ${symbol_count} symbols." >&2
 
-echo "[2/3] Downloading USD-M daily 1m klines..." >&2
+echo "[2/3] Downloading USDⓈ-M daily 1m klines..." >&2
 uv run binance-datatool -v download um \
   --freq daily \
   --type klines \
@@ -62,7 +62,7 @@ if "$dry_run"; then
 fi
 
 # Verify only the symbols selected by the same remote snapshot.
-echo "[3/3] Verifying downloaded USD-M daily 1m klines..." >&2
+echo "[3/3] Verifying downloaded USDⓈ-M daily 1m klines..." >&2
 uv run binance-datatool -v verify um \
   --freq daily \
   --type klines \

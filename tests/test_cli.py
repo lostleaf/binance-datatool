@@ -499,7 +499,7 @@ def test_cli_list_symbols_warns_about_unknown_symbols_with_any_filter_flag(
 
 
 def test_cli_list_symbols_builds_um_filter_from_flags(monkeypatch) -> None:
-    """The CLI should normalize repeated quote filters for USD-M."""
+    """The CLI should normalize repeated quote filters for USDⓈ-M."""
 
     async def fake_run(self) -> ListSymbolsResult:
         assert self.data_freq.value == "monthly"

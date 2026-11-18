@@ -28,7 +28,7 @@ class SpotSymbolInfo(SymbolInfoBase):
 
 @dataclass(slots=True)
 class UmSymbolInfo(SymbolInfoBase):
-    """Parsed metadata for a USD-M futures symbol."""
+    """Parsed metadata for a USDⓈ-M futures symbol."""
 
     contract_type: ContractType  # Perpetual or dated delivery
     is_stable_pair: bool  # True when both base and quote are in STABLECOINS

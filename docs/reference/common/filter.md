@@ -73,7 +73,7 @@ Constructs the market-specific filter class for a given `trade_type` using only
 the arguments that apply to that market. Arguments that do not apply are
 silently ignored, for example:
 
-- `exclude_leverage` for USD-M and COIN-M
+- `exclude_leverage` for USDⓈ-M and COIN-M
 - `quote_assets` for COIN-M
 
 Returns `None` when every applicable argument is at its no-op default, so

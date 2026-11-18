@@ -44,17 +44,17 @@ class SpotSymbolFilter:
 
 @dataclass(slots=True)
 class UmSymbolFilter:
-    """Filter for USD-M futures symbols."""
+    """Filter for USDⓈ-M futures symbols."""
 
     quote_assets: frozenset[str] | None = None
     contract_type: ContractType | None = None
     exclude_stable_pairs: bool = False
 
     def matches(self, info: UmSymbolInfo) -> bool:
-        """Return whether the symbol matches the configured USD-M filters.
+        """Return whether the symbol matches the configured USDⓈ-M filters.
 
         Args:
-            info: Parsed USD-M futures symbol metadata.
+            info: Parsed USDⓈ-M futures symbol metadata.
 
         Returns:
             ``True`` when the symbol passes every enabled filter.
@@ -66,7 +66,7 @@ class UmSymbolFilter:
         return not (self.exclude_stable_pairs and info.is_stable_pair)
 
     def __call__(self, infos: Iterable[UmSymbolInfo]) -> list[UmSymbolInfo]:
-        """Return the matching USD-M futures symbols in input order."""
+        """Return the matching USDⓈ-M futures symbols in input order."""
         return [info for info in infos if self.matches(info)]
 
 

@@ -5,24 +5,9 @@ Domain terms are defined in the [glossary](../../../GLOSSARY.md).
 
 ## Structured JSON results
 
-`list-symbols`, `list-files`, `download`, and `verify` accept `--json`; download and verify
-support real and dry-run modes.
-Each returned workflow result emits exactly one JSON document on stdout, including empty
-listings or plans, no-work runs, and partial or all-symbol listing failures.
-Logs, progress, existing summaries, and diagnostic payloads
-remain on stderr, including aria2 subprocess output. Output without `--json` is unchanged.
-
-The common envelope contains `command` (the CLI command name), `dry_run` (boolean), and
-`summary` (an object). Field names use `snake_case`; counts and byte sizes are nonnegative
-integers. Required fields remain present when zero or empty; collections use `[]`. Fields
-belonging only to another mode are omitted. Array order follows the workflow result; object
-key order and whitespace are not contracts. There is no schema version or success/status
-field. This initial format carries no long-term stability promise: future field or semantic
-changes must update this reference and the packaged agent skill with the implementation.
-
-The single-document guarantee starts when the workflow returns a result. Argument validation,
-missing configuration, and unhandled exceptions without a result retain existing behavior;
-stdout may be empty. Returned failures emit their JSON before the command exits `2`.
+All four commands accept `--json`. Read the [CLI JSON field reference](../../../skills/binance-datatool/references/json-results.md) for
+the result envelope, per-command fields, and the distinction between a partial result
+and empty stdout.
 
 ## `list-symbols`
 
@@ -38,8 +23,8 @@ binance-datatool list-symbols <TRADE_TYPE>
 | `TRADE_TYPE` | `TradeType` | *(required)* | Market segment (positional argument). |
 | `--freq` | `DataFrequency` | `daily` | Partition frequency. |
 | `--type` | `DataType` | `klines` | Dataset type. |
-| `--quote` | `list[str]` | `None` | Filter by quote asset. Repeat to allow multiple values. Normalized to uppercase and deduplicated. |
-| `--exclude-leverage` | `bool` | `False` | Exclude leveraged spot tokens. Ignored for USD-M and COIN-M. |
+| `--quote` | `list[str]` | `None` | Filter by quote asset. Repeat to allow multiple values. Normalized to uppercase and deduplicated. Applies to spot and USDⓈ-M. |
+| `--exclude-leverage` | `bool` | `False` | Exclude leveraged spot tokens. Ignored for USDⓈ-M and COIN-M. |
 | `--exclude-stables` | `bool` | `False` | Exclude stablecoin pairs. Ignored for COIN-M. |
 | `--contract-type` | `ContractType` | `None` | Restrict futures symbols to `perpetual` or `delivery`. Ignored for spot. |
 | `--json` | `bool` | `False` | Emit one structured result with symbol selection and classification details. |
@@ -58,32 +43,15 @@ or uninferable names.
 
 ### JSON output
 
-`--json` emits `command: "list-symbols"` and `dry_run: false`; the command has no dry-run
-option. Every returned result, including an empty listing, contains these arrays:
-
-| Field | Contents |
-|-------|----------|
-| `symbols` | Selected symbol strings in the order defined above. |
-| `matched` | Inferred records that pass filtering, in result order. |
-| `filtered_out` | Inferred records excluded by filtering, in result order. |
-| `uninferable` | Symbol strings whose metadata cannot be inferred; no fabricated attributes. |
-
-Every inferred record contains `symbol`, `base_asset`, and `quote_asset`. Spot records add
-boolean `is_leverage` and `is_stable_pair`; USD-M records add `contract_type` and boolean
-`is_stable_pair`; COIN-M records add only `contract_type`. Contract values are `perpetual`
-or `delivery`. Inapplicable attributes are omitted from both inferred-record arrays.
-
-The `summary` fields are `total_raw_symbols`, `returned_symbols`, `matched_symbols`,
-`filtered_out_symbols`, and `uninferable_symbols`. `returned_symbols` equals the length of
-`symbols`; the three classification counts equal their respective array lengths, and their
-sum equals `total_raw_symbols`. Empty results retain all fields with zero counts and `[]`.
+For selected names, classification records, market-specific attributes, and counts, see
+[the `list-symbols` JSON fields](../../../skills/binance-datatool/references/json-results.md#list-symbols).
 
 **Examples:**
 
 ```
 binance-datatool list-symbols spot --quote USDT --exclude-leverage --exclude-stables
 binance-datatool list-symbols um --quote USDT --quote USDC --contract-type perpetual
-binance-datatool list-symbols cm --contract-type delivery
+binance-datatool list-symbols um --contract-type delivery
 binance-datatool list-symbols um --quote USDT --json
 ```
 
@@ -137,7 +105,7 @@ preserving the caller-provided symbol order.
 | `--type` | `DataType` | `klines` | Dataset type. |
 | `--interval` | `str \| None` | `None` | Kline interval directory. **Required** when `data_type.has_interval_layer` is `True` (the four kline-class data types); **rejected** otherwise. |
 | `-l` / `--long` | `bool` | `False` | Switch from short relative-path output to a three-column TSV: `size_bytes<TAB>last_modified_iso<TAB>relative_path`. |
-| `--only-zip` | `bool` | `False` | Print only `.zip` files. Mutually exclusive with `--only-checksum`. |
+| `--only-zip` | `bool` | `False` | Exclude keys ending in `.CHECKSUM`. Mutually exclusive with `--only-checksum`. |
 | `--only-checksum` | `bool` | `False` | Print only `.zip.CHECKSUM` files. Mutually exclusive with `--only-zip`. |
 | `--progress-bar` | `bool` | `False` | Show interactive tqdm progress bar on stderr. By default no interactive progress is shown; sampled log lines at INFO level are emitted instead. See [`common.progress`](../common/progress.md). |
 | `--json` | `bool` | `False` | Emit remote metadata in one structured result. Accepts `--long`, which has no effect on JSON fields. |
@@ -196,47 +164,8 @@ selected market, frequency, and data type rather than as a local runtime error.
 
 ### JSON output
 
-With `--json`, the envelope uses `command: "list-files"` and `dry_run: false`. This command
-has no dry-run option and needs no Archive home configuration. The required `per_symbol`
-array retains workflow symbol order and file order. Each symbol record contains:
-
-| Field | Meaning |
-|-------|---------|
-| `symbol` | Normalized symbol name. |
-| `files` | Array of objects with `url`, integer byte `size`, and `last_modified`. |
-| `error` | `null` for a successful listing, including an empty directory; original workflow error text for a failed listing. Failed listings have empty `files`. |
-
-Listing errors are non-empty: existing exception messages are preserved verbatim, and an
-empty exception message uses its class name, such as `TimeoutError`. Text and JSON modes
-retain the error and its Symbol on stderr and exit `2`. A failed timeout contributes to
-`failed_symbols`, and suppresses the successful-empty-listing warning even if no files were
-returned. JSON stdout remains one result document with the failed Symbol's `files: []`
-and non-empty `error`; a successful empty listing has `error: null`.
-
-`url` combines the existing download base `https://data.binance.vision` with the complete
-object key, for example
-`https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-03.zip`.
-There is no local or relative-path field. `last_modified` is UTC ISO 8601 at second precision,
-ending in `Z`, such as `2026-04-01T08:06:34Z`.
-
-`--only-zip` and `--only-checksum` select files using the same rules as text mode; together
-they remain invalid. A symbol record remains present when all its files are filtered out.
-The summary contains:
-
-| Field | Meaning |
-|-------|---------|
-| `requested_symbols` | Number of workflow symbol records after existing duplicate-input collapse. |
-| `successful_symbols` | Records whose `error` is `null`. |
-| `failed_symbols` | Records with a listing error. |
-| `total_remote_files` | Successfully listed files before output filtering. Failed symbols contribute no invented file counts. |
-| `returned_files` | Sum of emitted file-array lengths after filtering. |
-
-A ZIP/checksum pair with `--only-zip` has `total_remote_files: 2` and `returned_files: 1`.
-Empty-result warnings use the unfiltered workflow result: filtering a nonempty listing to
-zero returned files does not produce a warning. Symbol/error diagnostics remain on stderr.
-JSON is serialized before exit `2` for any listing failure; all other returned results,
-including empty results, exit `0`. Validation and other failures without a result retain
-the shared no-result behavior described above.
+For per-symbol errors, remote file metadata, and counts before and after filtering, see
+[the `list-files` JSON fields](../../../skills/binance-datatool/references/json-results.md#list-files).
 
 ### Exit codes
 
@@ -379,36 +308,8 @@ to stderr: `N files to download, M up to date`.
 
 ### JSON output
 
-Both modes include `listing_errors`, an array of `{ "symbol": "ETHUSDT", "error": "..." }`
-records retaining the non-empty listing error text, with the exception class name used for
-an empty exception message. `summary.listing_failed_symbols` equals this array's
-length and is separate from transfer failures. `total_remote` counts only successfully listed
-objects; ZIP and checksum objects count separately. Failed listings leave the inventory
-incomplete and do not contribute estimated file counts.
-
-| Mode | Required `summary` fields | Additional result field |
-|------|---------------------------|-------------------------|
-| Dry-run | `total_remote`, `skipped`, `to_download`, `listing_failed_symbols` | `to_download`: records with absolute `path`, integer byte `size`, and `reason` (`new` or `updated`). |
-| Real run | `total_remote`, `skipped`, `downloaded`, `failed`, `listing_failed_symbols` | `failed_paths`: absolute path strings for requests still failing after all retries. |
-
-Dry-run satisfies `total_remote = skipped + to_download`; `summary.to_download` equals the
-plan length. It modifies no local files and includes neither completed-download counts nor
-`failed_paths`. A real run satisfies `total_remote = skipped + downloaded + failed`;
-`summary.failed` equals the length of `failed_paths`. Requests succeeding on retry are absent
-from failures. Real runs omit `to_download`.
-
-Local paths are absolute, interpreting a relative Archive home against the invocation working
-directory. Formatting requires no file existence and does not resolve symlinks or change
-storage behavior. Plans and failures may name absent files. Downloaded and Up to date do not
-establish Verified status.
-
-```bash
-binance-datatool -v --archive-home ./archive download um --freq monthly --type fundingRate --dry-run --json BTCUSDT
-binance-datatool -v --archive-home ./archive download um --freq monthly --type fundingRate --json BTCUSDT
-```
-
-Both modes emit JSON before exit `2` for any symbol listing failure. Real runs also exit `2`
-for final transfer failures. Other returned results exit `0`, including empty results.
+For dry-run plans, listing errors, and transfer failures, see
+[the `download` JSON fields](../../../skills/binance-datatool/references/json-results.md#download).
 
 ### Normal output
 
@@ -546,34 +447,8 @@ selection flags, and the symbol list.
 
 ### JSON output
 
-Verification counts ZIPs as targets; their checksums are not separate verification targets.
-Both modes use `command: "verify"` and the shared JSON conventions above.
-
-| Mode | Required `summary` fields | Additional result field |
-|------|---------------------------|-------------------------|
-| Dry-run | `total_zips`, `to_verify`, `skipped`, `orphan_zips`, `orphan_checksums` | `to_verify`: absolute path strings for ZIPs awaiting verification. |
-| Real run | `total_zips`, `verified`, `failed`, `skipped`, `orphan_zips`, `orphan_checksums` | `failed_details`: records containing absolute `path` and the workflow's failure `detail`. |
-
-Dry-run only scans, without hashing, cleanup, or marker changes. It satisfies
-`total_zips = to_verify + skipped + orphan_zips`, and `summary.to_verify` equals the plan
-length. It omits completed verification counts and `failed_details`.
-
-Real runs satisfy `total_zips = verified + failed + skipped + orphan_zips`, and
-`summary.failed` equals the length of `failed_details`. They omit `to_verify` and supply
-no successful or skipped file manifests. Failure details remain in the document after
-the failed ZIP and its checksum are deleted by default; `--keep-failed` retains the pair.
-The document is emitted before exit `2` for any verification failure. Other returned
-results exit `0`, including empty scans and orphan cleanup alone.
-
-Local paths are absolute, interpreting a relative Archive home against the invocation's
-working directory. Formatting requires no file existence, leaves symlinks unresolved,
-and does not change filesystem targets. A path may identify an already deleted file;
-its presence does not establish existence or Verified status.
-
-```bash
-binance-datatool -v --archive-home ./archive verify um --freq monthly --type fundingRate --dry-run --json BTCUSDT
-binance-datatool -v --archive-home ./archive verify um --freq monthly --type fundingRate --json BTCUSDT
-```
+For dry-run paths, cached and newly verified counts, orphan counts, and failure details, see
+[the `verify` JSON fields](../../../skills/binance-datatool/references/json-results.md#verify).
 
 ### Normal output
 

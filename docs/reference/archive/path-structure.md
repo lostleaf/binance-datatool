@@ -11,7 +11,7 @@ data/
 │   ├── daily/
 │   └── monthly/
 ├── futures/
-│   ├── um/                     # USD-M futures
+│   ├── um/                     # USDⓈ-M futures
 │   │   ├── daily/
 │   │   └── monthly/
 │   └── cm/                     # COIN-M futures
@@ -31,116 +31,39 @@ The first two path segments map directly to `TradeType.s3_path` and `DataFrequen
 
 ## Data Type Availability
 
-The next path segment is the `DataType` value. Available data types vary by
-market and frequency.
-
-### spot
-
-| `DataType` | daily | monthly |
-|------------|:-----:|:-------:|
-| `klines` | Y | Y |
-| `aggTrades` | Y | Y |
-| `trades` | Y | Y |
-
-### futures/um
-
-| `DataType` | daily | monthly |
-|------------|:-----:|:-------:|
-| `klines` | Y | Y |
-| `aggTrades` | Y | Y |
-| `trades` | Y | Y |
-| `fundingRate` | — | Y |
-| `bookDepth` | Y | — |
-| `bookTicker` | Y | Y |
-| `indexPriceKlines` | Y | Y |
-| `markPriceKlines` | Y | Y |
-| `premiumIndexKlines` | Y | Y |
-| `metrics` | Y | — |
-
-### futures/cm
-
-| `DataType` | daily | monthly |
-|------------|:-----:|:-------:|
-| `klines` | Y | Y |
-| `aggTrades` | Y | Y |
-| `trades` | Y | Y |
-| `fundingRate` | — | Y |
-| `bookDepth` | Y | — |
-| `bookTicker` | Y | Y |
-| `indexPriceKlines` | Y | Y |
-| `markPriceKlines` | Y | Y |
-| `premiumIndexKlines` | Y | Y |
-| `metrics` | Y | — |
-| `liquidationSnapshot` | Y | — |
-
-**Key rules:**
-
-- `fundingRate` exists only under `monthly`. The `daily` prefix returns an empty listing.
-- `bookDepth` and `metrics` exist only under `daily`.
-- `liquidationSnapshot` exists only under `cm/daily`.
+The next path segment is the `DataType` value. For published market and partition
+combinations, see [datasets by market](../../../skills/binance-datatool/references/archive-availability.md#datasets-by-market).
 
 ## Symbol Layer
 
-Path pattern: `data/{trade_type}/{data_freq}/{data_type}/{symbol}/`
+`TradeType.s3_path` supplies the market path in `data/{market_path}/{data_freq}/{data_type}/{symbol}/`.
 
 ### Naming conventions
 
-| Market | Contract style | Format | Examples |
-|--------|----------------|--------|----------|
-| spot | — | `{BASE}{QUOTE}` | `BTCUSDT`, `ETHUSDT`, `1000SHIBUSDT` |
-| um (perpetual) | PERPETUAL | `{BASE}{QUOTE}` | `BTCUSDT`, `0GUSDT`, `1000BONKUSDT` |
-| um (delivery) | DELIVERY | `{BASE}{QUOTE}_{YYMMDD}` | `BTCUSDT_260925`, `ETHUSDT_210326` |
-| cm (perpetual) | PERPETUAL | `{BASE}USD_PERP` | `BTCUSD_PERP`, `ETHUSD_PERP` |
-| cm (delivery) | DELIVERY | `{BASE}USD_{YYMMDD}` | `ADAUSD_200925`, `BTCUSD_250627` |
+| Market | Contract style | Symbol format |
+|--------|----------------|---------------|
+| Spot | — | `{BASE}{QUOTE}`, e.g. `BTCUSDT` |
+| USDⓈ-M | Perpetual | `{BASE}{QUOTE}`, e.g. `BTCUSDT` |
+| USDⓈ-M | Delivery | `{BASE}{QUOTE}_{YYMMDD}`, e.g. `BTCUSDT_260925` |
+| COIN-M | Perpetual | `{BASE}USD_PERP` |
+| COIN-M | Delivery | `{BASE}USD_{YYMMDD}` |
 
 **Notes:**
 
-- um perpetual symbols do **not** carry a `_PERP` suffix. A um symbol is a delivery
-  contract only when its name ends with `_{YYMMDD}` (six digits). Most um symbols
-  are perpetual.
-- cm symbols always carry either `_PERP` or `_{YYMMDD}`.
 - Some symbols have numeric prefixes: `1000BONKUSDT`, `1000000MOGUSDT`, `0GUSDT`.
 - A `SETTLED` suffix marks delisted contracts: `CVCUSDTSETTLED`, `ICPUSDTSETTLED`.
-- **cm kline-class data types use different symbol formats:**
-  - `indexPriceKlines` — bare base pair `{BASE}USD` (e.g. `AAVEUSD`), no contract suffix.
-  - `premiumIndexKlines` — perpetual contracts only (`{BASE}USD_PERP`).
-  - `markPriceKlines` — both `_PERP` and `_{YYMMDD}` contracts.
+- For dataset-specific pair and contract names, see
+  [COIN-M price kline symbols](../../../skills/binance-datatool/references/archive-availability.md#coin-m-price-kline-symbols).
 
 ## Interval Layer
 
-Data types where `DataType.has_interval_layer` is `True` have an additional interval
-directory between the symbol and the data files:
-
-| `DataType` | Interval layer |
-|------------|:--------------:|
-| `klines` | Yes |
-| `indexPriceKlines` | Yes |
-| `markPriceKlines` | Yes |
-| `premiumIndexKlines` | Yes |
-| All other types | No |
+When `DataType.has_interval_layer` is true, the interval directory sits between the
+symbol and the data files.
 
 ### Available intervals
 
-| Interval | spot `klines` | um/cm `klines` | um/cm `indexPriceKlines` / `markPriceKlines` / `premiumIndexKlines` |
-|----------|:-------------:|:--------------:|:------------------------------------------------------------------:|
-| `1s` | Y | — | — |
-| `1m` | Y | Y | Y |
-| `3m` | Y | Y | Y |
-| `5m` | Y | Y | Y |
-| `15m` | Y | Y | Y |
-| `30m` | Y | Y | Y |
-| `1h` | Y | Y | Y |
-| `2h` | Y | Y | Y |
-| `4h` | Y | Y | Y |
-| `6h` | Y | Y | Y |
-| `8h` | Y | Y | Y |
-| `12h` | Y | Y | Y |
-| `1d` | Y | Y | Y |
-| `3d` | — | Y | Y |
-| `1w` | — | Y | Y |
-| `1mo` | — | Y | Y |
-
-`1s` (second-level klines) is spot-only. `3d`, `1w`, and `1mo` are futures-only.
+For interval values and their observed partitions, see
+[Kline intervals](../../../skills/binance-datatool/references/archive-availability.md#kline-intervals).
 
 ## File Naming
 
@@ -174,35 +97,22 @@ Every `.zip` file may have a companion checksum file:
 Kline-class data types (`has_interval_layer=True`):
 
 ```
-data / {trade_type} / {data_freq} / {data_type} / {symbol} / {interval} / {filename}.zip
+data / {market_path} / {data_freq} / {data_type} / {symbol} / {interval} / {filename}.zip
 ```
 
 Non-kline data types:
 
 ```
-data / {trade_type} / {data_freq} / {data_type} / {symbol} / {filename}.zip
+data / {market_path} / {data_freq} / {data_type} / {symbol} / {filename}.zip
 ```
 
 ### Full path examples
 
 ```
 data/spot/daily/klines/BTCUSDT/1m/BTCUSDT-1m-2024-01-01.zip
-data/futures/um/daily/klines/BTCUSDT/1h/BTCUSDT-1h-2024-01-01.zip
-data/futures/cm/daily/klines/BTCUSD_PERP/1m/BTCUSD_PERP-1m-2024-01-01.zip
 data/spot/monthly/klines/BTCUSDT/1m/BTCUSDT-1m-2024-01.zip
-
-data/futures/um/daily/indexPriceKlines/BTCUSDT/1m/BTCUSDT-1m-2024-01-01.zip
 data/futures/um/daily/markPriceKlines/BTCUSDT/5m/BTCUSDT-5m-2024-01-01.zip
-
 data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2024-01.zip
-data/futures/cm/monthly/fundingRate/BTCUSD_PERP/BTCUSD_PERP-fundingRate-2024-01.zip
-
-data/spot/daily/aggTrades/BTCUSDT/BTCUSDT-aggTrades-2024-01-01.zip
-data/futures/um/daily/trades/BTCUSDT/BTCUSDT-trades-2024-01-01.zip
-data/futures/um/daily/metrics/BTCUSDT/BTCUSDT-metrics-2024-01-01.zip
-data/futures/um/daily/bookDepth/BTCUSDT/BTCUSDT-bookDepth-2024-01-01.zip
-data/futures/um/daily/bookTicker/BTCUSDT/BTCUSDT-bookTicker-2024-01-01.zip
-data/futures/cm/daily/liquidationSnapshot/BTCUSD_PERP/BTCUSD_PERP-liquidationSnapshot-2024-01-01.zip
 ```
 
 ---

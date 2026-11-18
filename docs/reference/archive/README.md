@@ -26,7 +26,7 @@ details.
 | [checksum](checksum.md) | SHA256 checksum helpers and `VerifyFileResult`. |
 | [symbol_dir](symbol_dir.md) | Local symbol archive directory helpers and marker management. |
 | [S3 protocol](s3-protocol.md) | XML listing request format, pagination, retry, and proxy behavior. |
-| [Path structure](path-structure.md) | S3 directory hierarchy, data type availability, and file naming conventions. |
+| [Path structure](path-structure.md) | S3 directory hierarchy, symbol naming conventions, and file names. |
 
 ## Package Re-exports
 

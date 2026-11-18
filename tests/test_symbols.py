@@ -403,7 +403,7 @@ def test_infer_spot_info_returns_none_for_invalid_symbols(symbol: str) -> None:
     ],
 )
 def test_infer_um_info(symbol: str, expected: UmSymbolInfo) -> None:
-    """USD-M symbol inference should parse contract type and assets."""
+    """USDⓈ-M symbol inference should parse contract type and assets."""
 
     assert infer_um_info(symbol) == expected
 

@@ -7,7 +7,7 @@ Enumerations for market segments, data frequencies, dataset types, and contract 
 | Member | Value | `s3_path` | Description |
 |--------|-------|-----------|-------------|
 | `spot` | `spot` | `spot` | Spot trading market. |
-| `um` | `um` | `futures/um` | USD-M perpetual and delivery futures. |
+| `um` | `um` | `futures/um` | USDⓈ-M perpetual and delivery futures. |
 | `cm` | `cm` | `futures/cm` | COIN-M perpetual and delivery futures. |
 
 **`DataFrequency(StrEnum)`** — Archive partition frequency.

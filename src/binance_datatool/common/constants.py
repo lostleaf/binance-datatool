@@ -9,7 +9,7 @@ S3_DOWNLOAD_PREFIX = "https://data.binance.vision"
 # Default timeout in seconds for a single HTTP request to the S3 listing endpoint.
 S3_HTTP_TIMEOUT_SECONDS = 15
 
-# Quote assets observed in Binance spot and USD-M symbols.
+# Quote assets observed in Binance spot and USDⓈ-M symbols.
 # Ordering is significant: longer suffixes must be matched before shorter ones.
 # fmt: off
 QUOTE_ASSETS: tuple[str, ...] = (

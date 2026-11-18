@@ -82,7 +82,7 @@ def test_spot_symbol_filter_call_preserves_order_and_handles_edge_cases() -> Non
 
 
 def test_um_symbol_filter_matches_quote_contract_type_and_stable_pair() -> None:
-    """USD-M filters should honor quote, contract type, and stable-pair constraints."""
+    """USDⓈ-M filters should honor quote, contract type, and stable-pair constraints."""
     perpetual = UmSymbolInfo(
         symbol="BTCUSDT",
         base_asset="BTC",
@@ -114,7 +114,7 @@ def test_um_symbol_filter_matches_quote_contract_type_and_stable_pair() -> None:
 
 
 def test_um_symbol_filter_call_handles_empty_and_all_filtered() -> None:
-    """USD-M batch filtering should preserve order and support empty results."""
+    """USDⓈ-M batch filtering should preserve order and support empty results."""
     symbols = [
         UmSymbolInfo(
             symbol="BTCUSDT",

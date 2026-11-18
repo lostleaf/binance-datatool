@@ -12,7 +12,7 @@ class TradeType(StrEnum):
     """
 
     spot = "spot"  # Spot trading market
-    um = "um"  # USD-M perpetual and delivery futures
+    um = "um"  # USDⓈ-M perpetual and delivery futures
     cm = "cm"  # COIN-M perpetual and delivery futures
 
     @property

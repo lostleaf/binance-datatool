@@ -6,7 +6,9 @@ and verifying their integrity against SHA256 checksums.
 ## Language
 
 **TradeType**:
-The Binance market classification to which an archive belongs.
+The Binance market to which an archive belongs. This project covers Spot,
+USDⓈ-Margined Futures (USDⓈ-M), and COIN-Margined Futures (COIN-M).
+[Binance futures market names](https://www.binance.com/en/support/faq/detail/85eac2bba0b342819122dc9bd4745e9b)
 _Avoid_: Exchange type.
 
 **DataFrequency**:

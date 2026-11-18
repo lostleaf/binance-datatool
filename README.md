@@ -4,7 +4,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![License: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-green)](https://github.com/lostleaf/binance-datatool/blob/main/LICENSE)
 
-Binance DataTool is an unofficial CLI for downloading historical Spot, USD-M Futures, and
+Binance DataTool is an unofficial CLI for downloading historical Spot, USDⓈ-M Futures, and
 COIN-M Futures data from [Binance's public archive](https://data.binance.vision/) and
 verifying it locally with SHA256. With the [binance-datatool skill][skill], your AI agent
 can discover datasets, preview downloads, and read results as JSON.
@@ -68,6 +68,6 @@ binance-datatool list-symbols spot --freq monthly --quote USDT --exclude-stables
 - To work on Binance DataTool, see the [contributor guide][contributing].
 
 [skill]: https://github.com/lostleaf/binance-datatool/blob/main/skills/binance-datatool/SKILL.md
-[datasets]: https://github.com/lostleaf/binance-datatool/blob/main/docs/reference/archive/path-structure.md#data-type-availability
+[datasets]: https://github.com/lostleaf/binance-datatool/blob/main/skills/binance-datatool/references/archive-availability.md#datasets-by-market
 [cli]: https://github.com/lostleaf/binance-datatool/blob/main/docs/reference/cli/archive.md
 [contributing]: https://github.com/lostleaf/binance-datatool/blob/main/docs/README.md

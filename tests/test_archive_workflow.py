@@ -118,7 +118,7 @@ async def test_archive_list_symbols_workflow_applies_spot_filter_and_preserves_o
 
 @pytest.mark.asyncio
 async def test_archive_list_symbols_workflow_applies_um_filter() -> None:
-    """USD-M workflows should filter by quote, contract type, and stable-pair status."""
+    """USDⓈ-M workflows should filter by quote, contract type, and stable-pair status."""
     workflow = ArchiveListSymbolsWorkflow(
         trade_type=TradeType.um,
         data_freq=DataFrequency.daily,

@@ -15,7 +15,7 @@ Parsing strategy:
    suffixes are tried first so that ``RLUSD`` beats ``USD`` for a
    symbol like ``XRPRLUSD``.
 
-3. For spot and USD-M, apply ``QUOTE_BASE_EXCLUDES`` to handle the
+3. For spot and USDⓈ-M, apply ``QUOTE_BASE_EXCLUDES`` to handle the
    small set of symbols where greedy long-quote matching disagrees
    with Binance's own ``exchangeInfo`` base/quote split (e.g.
    ``ADAEUR`` must be ``ADA + EUR``, not ``AD + AEUR``).
@@ -97,10 +97,10 @@ def infer_spot_info(symbol: str) -> SpotSymbolInfo | None:
 
 
 def infer_um_info(symbol: str) -> UmSymbolInfo | None:
-    """Infer metadata from a USD-M futures symbol string.
+    """Infer metadata from a USDⓈ-M futures symbol string.
 
     Args:
-        symbol: Original Binance USD-M symbol, including settled suffixes.
+        symbol: Original Binance USDⓈ-M symbol, including settled suffixes.
 
     Returns:
         Parsed symbol metadata, or ``None`` when the quote asset cannot be inferred.

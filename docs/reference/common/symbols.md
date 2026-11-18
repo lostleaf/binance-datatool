@@ -1,7 +1,7 @@
 # binance_datatool.common.symbols
 
 Symbol inference helpers that accept raw Binance symbols and return typed metadata objects.
-They strip all trailing settled suffixes across spot, USD-M, and COIN-M inputs before
+They strip all trailing settled suffixes across spot, USDⓈ-M, and COIN-M inputs before
 matching contract types and quote assets. Each suffix is `SETTLED`, optionally preceded
 by an underscore and followed by digits; repeated suffixes are supported too. For example,
 `AERGOUSDTSETTLEDSETTLED` infers as AERGO/USDT perpetual. Returned metadata preserves the
@@ -10,7 +10,7 @@ original, unmodified symbol string.
 | Function | Return Type | Description |
 |----------|-------------|-------------|
 | `infer_spot_info(symbol)` | `SpotSymbolInfo \| None` | Parse a spot symbol by matching `QUOTE_ASSETS` suffixes. |
-| `infer_um_info(symbol)` | `UmSymbolInfo \| None` | Parse a USD-M futures symbol and infer perpetual vs delivery from the remaining underscore suffix. |
+| `infer_um_info(symbol)` | `UmSymbolInfo \| None` | Parse a USDⓈ-M futures symbol and infer perpetual vs delivery from the remaining underscore suffix. |
 | `infer_cm_info(symbol)` | `CmSymbolInfo \| None` | Parse a COIN-M futures symbol in `BASEUSD_PERP` or `BASEUSD_YYMMDD` form. |
 
 ## Quote Parsing Rules
