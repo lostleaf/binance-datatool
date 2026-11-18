@@ -33,11 +33,29 @@ filter still drops uninferable names.
 Use `list-files` to confirm which ZIPs exist for the exact selection. Both listing commands
 work without an Archive home.
 
+## Choose the local folder
+
+Use the same folder for `download` and `verify` throughout the task, including dry-runs.
+
+1. If the user specifies a folder, pass it with `--archive-home`. For example, if they ask to
+   download monthly archives of BTCUSDT spot daily candles to `$HOME/binance_archive`, run
+
+   ```bash
+   binance-datatool --archive-home "$HOME/binance_archive" download spot BTCUSDT \
+     --freq monthly --type klines --interval 1d --json
+   ```
+
+2. Otherwise, check `BINANCE_DATATOOL_ARCHIVE_HOME` in the current environment. If it has a
+   value, omit the flag so the CLI uses that folder.
+3. If the variable is unset or empty, ask in the user's language. For a download, ask
+   “Which folder would you like to download the data to?” For verification alone, ask
+   “Which folder did you download the data to?” You can then call that folder the Archive home.
+   Wait for the user's answer and use their folder as in step 1.
+
 ## Preview and download
 
-For `download` and `verify`, including dry-runs, set `BINANCE_DATATOOL_ARCHIVE_HOME` or pass
-`--archive-home PATH` before the command. The flag takes precedence. Both commands accept
-positional symbols or, when those are omitted, one symbol per line on stdin.
+Both `download` and `verify` accept positional symbols or, when those are omitted, one
+symbol per line on stdin.
 
 A download covers all available dates for the selection. For a batch, save the text output
 of `list-symbols` once and reuse it for preview, download, and verification. For example,
@@ -46,7 +64,7 @@ to estimate a batch of spot USDT daily candles:
 ```bash
 binance-datatool list-symbols spot --freq monthly --type klines \
   --quote USDT --exclude-stables --exclude-leverage > symbols.txt &&
-binance-datatool --archive-home ./archive download spot --freq monthly --type klines \
+binance-datatool download spot --freq monthly --type klines \
   --interval 1d --dry-run --json < symbols.txt
 ```
 
@@ -58,12 +76,12 @@ checksum files separately. Use `verify` when the user requests an integrity chec
 
 ## Verify local ZIPs
 
-Use the same Archive home, symbols, frequency, dataset, and interval as the download.
-The command below scans `./archive/data/spot/monthly/klines/BTCUSDT/1d/` for monthly ZIPs
-of BTCUSDT daily candles.
+Use the same symbols, frequency, dataset, and interval as the download. The command below
+scans `data/spot/monthly/klines/BTCUSDT/1d/` under the selected Archive home for monthly
+ZIPs of BTCUSDT daily candles.
 
 ```bash
-binance-datatool --archive-home ./archive verify spot BTCUSDT --freq monthly --type klines --interval 1d --json
+binance-datatool verify spot BTCUSDT --freq monthly --type klines --interval 1d --json
 ```
 
 `verify --dry-run` previews the local scan without hashing or cleanup. A real run deletes a
