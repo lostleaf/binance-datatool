@@ -72,6 +72,11 @@ and `ArchiveVerifyWorkflow` in `workflow/` for real examples.
 Add a Typer root command in `cli/archive.py`. The command parses arguments,
 constructs a workflow, and prints the result.
 
+Give each command one operation that an agent can run unattended. Accept required inputs
+through arguments, options, or piped stdin. Report missing input as a usage error. Write
+machine-readable results to stdout and diagnostics to stderr so callers can pipe the results.
+See the [CLI reference](reference/cli/archive.md) for existing input and output formats.
+
 ```python
 @app.command("list-dates")
 def list_dates_command(

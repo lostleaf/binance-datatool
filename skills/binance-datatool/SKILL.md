@@ -54,7 +54,7 @@ Before running any command, ensure three things are in place:
 2. **Archive home configured** — set `BINANCE_DATATOOL_ARCHIVE_HOME` to a directory for local data
    storage. Required by `download` and `verify`. Can also be passed per-command via `--archive-home`.
    ```bash
-   export BINANCE_DATATOOL_ARCHIVE_HOME="$HOME/crypto_data/binance_archive"
+   export BINANCE_DATATOOL_ARCHIVE_HOME="$HOME/binance_archive"
    ```
 3. **aria2 installed** — required when a real `download` run has objects to transfer.
    Dry-runs and empty transfer plans need no aria2.

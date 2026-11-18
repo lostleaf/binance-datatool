@@ -28,4 +28,4 @@
 - When reading or updating issues and specs, follow the [issue tracker guide](docs/agents/issue-tracker.md).
 - When triaging issues, use the [triage label mapping](docs/agents/triage-labels.md).
 
-For agent skill setup in a fresh checkout, see [agent development](README.md#agent-development).
+For agent skill setup in a fresh checkout, see [agent development](docs/README.md#agent-development).
