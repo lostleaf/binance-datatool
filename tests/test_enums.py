@@ -23,13 +23,11 @@ def test_market_type_names_values_and_archive_paths() -> None:
         "binance_datatool.cli.archive",
     ],
 )
-def test_market_type_import_warns_and_resolves_to_market_type(module_name: str) -> None:
-    """Each former public import path still resolves to the same enum."""
-    with pytest.warns(DeprecationWarning):
-        module = __import__(module_name, fromlist=["TradeType"])
-        legacy_type = module.TradeType
-
-    assert legacy_type is MarketType
+def test_trade_type_is_no_longer_importable(module_name: str) -> None:
+    """Each former public import path rejects the removed enum name."""
+    with pytest.raises(ImportError) as error:
+        exec(f"from {module_name} import TradeType", {})
+    assert error.value.name == module_name
 
 
 def test_data_type_has_interval_layer() -> None:

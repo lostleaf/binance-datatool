@@ -24,7 +24,6 @@ from binance_datatool.common import (
     resolve_archive_home,
 )
 from binance_datatool.common.constants import S3_DOWNLOAD_PREFIX
-from binance_datatool.common.enums import __getattr__ as __getattr__
 from binance_datatool.common.path import archive_path_parts, validate_interval
 from binance_datatool.workflow import (
     ArchiveDownloadWorkflow,
@@ -41,8 +40,6 @@ from binance_datatool.workflow import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
-
-    TradeType = MarketType
 
 
 DataFrequencyOption: TypeAlias = Annotated[

@@ -1,12 +1,21 @@
 # Migration notes
 
+## 0.4.0
+
+### Market type alias
+
+0.4.0 removes the `TradeType` alias. Import `MarketType` from `binance_datatool.common`
+or `binance_datatool.common.enums`.
+
+The public Python keyword changed from `trade_type=` to `market_type=` in
+[0.3.0](#market-type).
+
 ## 0.3.0
 
 ### Market type
 
-Use `MarketType` from `binance_datatool.common` or `binance_datatool.common.enums`.
-`TradeType` still resolves to the same enum and emits a `DeprecationWarning` in 0.3.0.
-Update enum imports before the next release, which removes the alias.
+0.3.0 introduced `MarketType`. In that release, `TradeType` resolved to the same
+enum and emitted a `DeprecationWarning`.
 
 Update public Python calls from `trade_type=` to `market_type=` when upgrading to 0.3.0.
 The old keyword raises `TypeError` even when callers use the deprecated enum import.

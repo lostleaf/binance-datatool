@@ -6,15 +6,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from binance_datatool.common.enums import MarketType
-from binance_datatool.common.enums import __getattr__ as __getattr__
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from binance_datatool.common.enums import ContractType
     from binance_datatool.common.types import CmSymbolInfo, SpotSymbolInfo, UmSymbolInfo
-
-    TradeType = MarketType
 
 
 @dataclass(slots=True)

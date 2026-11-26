@@ -1,7 +1,5 @@
 """Shared public types and constants for binance_datatool."""
 
-from typing import TYPE_CHECKING
-
 from binance_datatool.common.constants import (
     LEVERAGE_EXCLUDES,
     LEVERAGE_SUFFIXES,
@@ -12,7 +10,6 @@ from binance_datatool.common.constants import (
     STABLECOINS,
 )
 from binance_datatool.common.enums import ContractType, DataFrequency, DataType, MarketType
-from binance_datatool.common.enums import __getattr__ as __getattr__
 from binance_datatool.common.filter import (
     CmSymbolFilter,
     SpotSymbolFilter,
@@ -30,9 +27,6 @@ from binance_datatool.common.types import (
     SymbolInfoBase,
     UmSymbolInfo,
 )
-
-if TYPE_CHECKING:
-    TradeType = MarketType
 
 __all__ = [
     "ArchiveHomeNotConfiguredError",
@@ -54,7 +48,6 @@ __all__ = [
     "SymbolFilter",
     "SymbolInfo",
     "SymbolInfoBase",
-    "TradeType",
     "UmSymbolFilter",
     "UmSymbolInfo",
     "build_symbol_filter",

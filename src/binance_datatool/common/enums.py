@@ -1,10 +1,8 @@
 """Shared enums for Binance market archive paths."""
 
-import warnings
 from enum import StrEnum
-from typing import TYPE_CHECKING
 
-__all__ = ["ContractType", "DataFrequency", "DataType", "MarketType", "TradeType"]
+__all__ = ["ContractType", "DataFrequency", "DataType", "MarketType"]
 
 
 class MarketType(StrEnum):
@@ -77,20 +75,3 @@ class ContractType(StrEnum):
 
     perpetual = "perpetual"  # No expiry date; position stays open until closed
     delivery = "delivery"  # Expires on a fixed settlement date (e.g. 240927)
-
-
-if TYPE_CHECKING:
-    TradeType = MarketType
-
-
-def __getattr__(name: str) -> type[MarketType]:
-    """Resolve the deprecated enum name on legacy import paths."""
-    if name == "TradeType":
-        warnings.warn(
-            "TradeType is deprecated and will be removed in the next release. "
-            "Use MarketType instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return MarketType
-    raise AttributeError(f"module has no attribute {name!r}")

@@ -10,7 +10,8 @@ Enumerations for market types, data frequencies, dataset types, and contract sty
 | `um` | `um` | `futures/um` | USDⓈ-M perpetual and delivery futures. |
 | `cm` | `cm` | `futures/cm` | COIN-M perpetual and delivery futures. |
 
-See the [migration notes](../../migration.md#market-type) for the enum import and keyword changes.
+See the [migration notes](../../migration.md#market-type-alias) for the removal of `TradeType`
+in 0.4.0 and the public Python keyword rename in 0.3.0.
 
 **`DataFrequency(StrEnum)`** — Archive partition frequency.
 
