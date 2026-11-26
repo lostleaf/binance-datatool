@@ -25,10 +25,10 @@ binance-datatool list-files spot BTCUSDT --freq monthly --type klines --interval
 ```
 
 Use `list-symbols` with the intended frequency and dataset to discover symbol directories.
-Unfiltered output includes every listed name. Any filter flag limits output to symbols with
-inferable metadata. Spot supports quote, stablecoin, and leverage filters. USDⓈ-M supports quote,
-stablecoin, and contract type. COIN-M filters only by contract type. Passing an inapplicable
-filter still drops uninferable names.
+Unfiltered output includes every listed name. Any filter flag skips names with inference
+failures, even if the filter does not apply to the market. Spot supports quote, stablecoin,
+and leverage filters. USDⓈ-M supports quote, stablecoin, and contract type. COIN-M filters
+only by contract type.
 
 Use `list-files` to confirm which ZIPs exist for the exact selection. Both listing commands
 work without an Archive home.

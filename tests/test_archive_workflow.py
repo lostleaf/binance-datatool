@@ -65,8 +65,8 @@ def _symbol_verify_dir(tmp_path: Path, *, symbol: str = "BTCUSDT", interval: str
 
 
 @pytest.mark.asyncio
-async def test_archive_list_symbols_workflow_returns_inferred_and_unmatched_spot_symbols() -> None:
-    """Spot workflows should infer known symbols and preserve unmatched raw values."""
+async def test_archive_list_symbols_workflow_reports_spot_inference_failures() -> None:
+    """Spot workflows should infer known symbols and preserve inference failures."""
     workflow = ArchiveListSymbolsWorkflow(
         trade_type=TradeType.spot,
         data_freq=DataFrequency.daily,
@@ -78,7 +78,7 @@ async def test_archive_list_symbols_workflow_returns_inferred_and_unmatched_spot
 
     assert isinstance(result, ListSymbolsResult)
     assert [info.symbol for info in result.matched] == ["BTCUSDT", "ETHUSDT"]
-    assert result.unmatched == ["BTCZZZUNKNOWN"]
+    assert result.inference_failures == ["BTCZZZUNKNOWN"]
     assert result.filtered_out == []
     assert result.raw_symbols == ["BTCUSDT", "BTCZZZUNKNOWN", "ETHUSDT"]
     assert result.total_raw_symbols == 3
@@ -86,7 +86,7 @@ async def test_archive_list_symbols_workflow_returns_inferred_and_unmatched_spot
 
 @pytest.mark.asyncio
 async def test_archive_list_symbols_workflow_applies_spot_filter_and_preserves_order() -> None:
-    """Spot filtering preserves ordered buckets and omits the legacy count alias."""
+    """Spot filtering reports inference failures separately from filter exclusions."""
     workflow = ArchiveListSymbolsWorkflow(
         trade_type=TradeType.spot,
         data_freq=DataFrequency.daily,
@@ -105,13 +105,15 @@ async def test_archive_list_symbols_workflow_applies_spot_filter_and_preserves_o
 
     assert [info.symbol for info in result.matched] == ["BTCUSDT"]
     assert [info.symbol for info in result.filtered_out] == ["ETHBTC", "BNBUPUSDT", "USDCUSDT"]
-    assert result.unmatched == ["BTCZZZUNKNOWN"]
+    assert result.inference_failures == ["BTCZZZUNKNOWN"]
     assert result.raw_symbols == ["ETHBTC", "BNBUPUSDT", "BTCUSDT", "BTCZZZUNKNOWN", "USDCUSDT"]
     assert result.matched_symbols == 1
     assert result.filtered_out_symbols == 3
-    assert result.inference_failed_symbols == 1
+    assert result.inference_failure_count == 1
     assert result.total_raw_symbols == 5
 
+    assert not hasattr(result, "unmatched")
+    assert not hasattr(result, "inference_failed_symbols")
     with pytest.raises(AttributeError):
         _ = result.unmatched_symbols
 
@@ -135,12 +137,12 @@ async def test_archive_list_symbols_workflow_applies_um_filter() -> None:
 
     assert [info.symbol for info in result.matched] == ["BTCUSDT"]
     assert [info.symbol for info in result.filtered_out] == ["ETHUSDT_240927", "USDCUSDT"]
-    assert result.unmatched == ["BAD"]
+    assert result.inference_failures == ["BAD"]
 
 
 @pytest.mark.asyncio
 async def test_archive_list_symbols_workflow_applies_cm_filter() -> None:
-    """COIN-M workflows should filter inferred symbols and keep invalid raw values unmatched."""
+    """COIN-M workflows should filter inferred symbols and keep inference failures."""
     workflow = ArchiveListSymbolsWorkflow(
         trade_type=TradeType.cm,
         data_freq=DataFrequency.daily,
@@ -153,7 +155,7 @@ async def test_archive_list_symbols_workflow_applies_cm_filter() -> None:
 
     assert [info.symbol for info in result.matched] == ["ETHUSD_240927"]
     assert [info.symbol for info in result.filtered_out] == ["BTCUSD_PERP"]
-    assert result.unmatched == ["BTCUSD", "BADUSDT"]
+    assert result.inference_failures == ["BTCUSD", "BADUSDT"]
 
 
 @pytest.mark.integration

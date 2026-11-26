@@ -178,7 +178,7 @@ def test_cli_list_symbols_outputs_all_raw_symbols_without_filters(monkeypatch) -
                 SpotSymbolInfo(symbol, base, "USDT", False, False)
                 for symbol, base in [("BTCUSDT", "BTC"), ("ETHUSDT", "ETH")]
             ],
-            unmatched=["BTCZZZUNKNOWN"],
+            inference_failures=["BTCZZZUNKNOWN"],
             filtered_out=[],
             raw_symbols=["BTCUSDT", "BTCZZZUNKNOWN", "ETHUSDT"],
         )
@@ -202,7 +202,7 @@ def test_cli_list_symbols_json_preserves_unfiltered_archive_order(monkeypatch) -
         assert self.symbol_filter is None
         return ListSymbolsResult(
             matched=[SpotSymbolInfo("BTCUPUSDT", "BTCUP", "USDT", True, False)],
-            unmatched=["UNKNOWN"],
+            inference_failures=["UNKNOWN"],
             filtered_out=[],
             raw_symbols=["UNKNOWN", "BTCUPUSDT"],
         )
@@ -220,7 +220,7 @@ def test_cli_list_symbols_json_preserves_unfiltered_archive_order(monkeypatch) -
             "returned_symbols": 2,
             "matched_symbols": 1,
             "filtered_out_symbols": 0,
-            "uninferable_symbols": 1,
+            "inference_failure_count": 1,
         },
         "symbols": ["UNKNOWN", "BTCUPUSDT"],
         "matched": [
@@ -233,7 +233,7 @@ def test_cli_list_symbols_json_preserves_unfiltered_archive_order(monkeypatch) -
             }
         ],
         "filtered_out": [],
-        "uninferable": ["UNKNOWN"],
+        "inference_failures": ["UNKNOWN"],
     }
     assert result.stderr == ""
 
@@ -267,12 +267,12 @@ def test_cli_list_symbols_json_preserves_unfiltered_archive_order(monkeypatch) -
 def test_cli_list_symbols_json_classifies_market_records(
     monkeypatch, market, matched, filtered_out, attributes, excluded_attributes
 ) -> None:
-    """Each market exposes only its applicable attributes in both inferred buckets."""
+    """Filtered JSON separates filter exclusions from inference failures in every market."""
 
     async def fake_run(self) -> ListSymbolsResult:
         return ListSymbolsResult(
             matched=[matched],
-            unmatched=["UNKNOWN"],
+            inference_failures=["UNKNOWN"],
             filtered_out=[filtered_out],
             raw_symbols=[filtered_out.symbol, "UNKNOWN", matched.symbol],
         )
@@ -283,34 +283,37 @@ def test_cli_list_symbols_json_classifies_market_records(
 
     assert result.exit_code == 0
     document = json.loads(result.stdout)
-    assert document["command"] == "list-symbols"
-    assert document["dry_run"] is False
-    assert document["summary"] == {
-        "total_raw_symbols": 3,
-        "returned_symbols": 1,
-        "matched_symbols": 1,
-        "filtered_out_symbols": 1,
-        "uninferable_symbols": 1,
+    assert document == {
+        "command": "list-symbols",
+        "dry_run": False,
+        "summary": {
+            "total_raw_symbols": 3,
+            "returned_symbols": 1,
+            "matched_symbols": 1,
+            "filtered_out_symbols": 1,
+            "inference_failure_count": 1,
+        },
+        "symbols": [matched.symbol],
+        "matched": [
+            {
+                "symbol": matched.symbol,
+                "base_asset": matched.base_asset,
+                "quote_asset": matched.quote_asset,
+                **attributes,
+            }
+        ],
+        "filtered_out": [
+            {
+                "symbol": filtered_out.symbol,
+                "base_asset": filtered_out.base_asset,
+                "quote_asset": filtered_out.quote_asset,
+                **excluded_attributes,
+            }
+        ],
+        "inference_failures": ["UNKNOWN"],
     }
+    assert document["dry_run"] is False
     assert all(type(count) is int for count in document["summary"].values())
-    assert document["symbols"] == [matched.symbol]
-    assert document["matched"] == [
-        {
-            "symbol": matched.symbol,
-            "base_asset": matched.base_asset,
-            "quote_asset": matched.quote_asset,
-            **attributes,
-        }
-    ]
-    assert document["filtered_out"] == [
-        {
-            "symbol": filtered_out.symbol,
-            "base_asset": filtered_out.base_asset,
-            "quote_asset": filtered_out.quote_asset,
-            **excluded_attributes,
-        }
-    ]
-    assert document["uninferable"] == ["UNKNOWN"]
     assert "UNKNOWN" in result.stderr
 
 
@@ -321,7 +324,7 @@ def test_cli_list_symbols_json_empty_and_verbose_results(monkeypatch, verbosity,
 
     async def fake_run(self) -> ListSymbolsResult:
         logger.info("listing diagnostic payload")
-        return ListSymbolsResult(matched=[], unmatched=[], filtered_out=[])
+        return ListSymbolsResult(matched=[], inference_failures=[], filtered_out=[])
 
     monkeypatch.setattr("binance_datatool.workflow.ArchiveListSymbolsWorkflow.run", fake_run)
 
@@ -336,12 +339,12 @@ def test_cli_list_symbols_json_empty_and_verbose_results(monkeypatch, verbosity,
             "returned_symbols": 0,
             "matched_symbols": 0,
             "filtered_out_symbols": 0,
-            "uninferable_symbols": 0,
+            "inference_failure_count": 0,
         },
         "symbols": [],
         "matched": [],
         "filtered_out": [],
-        "uninferable": [],
+        "inference_failures": [],
     }
     if verbosity:
         assert "listing diagnostic payload" in result.stderr
@@ -350,14 +353,14 @@ def test_cli_list_symbols_json_empty_and_verbose_results(monkeypatch, verbosity,
 
 
 def test_cli_list_symbols_json_prefix_selectors_do_not_enable_filtering(monkeypatch) -> None:
-    """Frequency and dataset selection retain uninferable names without warnings."""
+    """Frequency and dataset selection retain names with inference failures without warnings."""
 
     async def fake_run(self) -> ListSymbolsResult:
         assert self.data_freq.value == "monthly"
         assert self.data_type.value == "fundingRate"
         assert self.symbol_filter is None
         return ListSymbolsResult(
-            matched=[], unmatched=["UNKNOWN"], filtered_out=[], raw_symbols=["UNKNOWN"]
+            matched=[], inference_failures=["UNKNOWN"], filtered_out=[], raw_symbols=["UNKNOWN"]
         )
 
     monkeypatch.setattr("binance_datatool.workflow.ArchiveListSymbolsWorkflow.run", fake_run)
@@ -413,7 +416,7 @@ def test_cli_list_symbols_does_not_warn_when_all_symbols_are_inferable(
                 SpotSymbolInfo(symbol, base, "USDT", False, False)
                 for symbol, base in [("BTCUSDT", "BTC"), ("ETHUSDT", "ETH")]
             ],
-            unmatched=[],
+            inference_failures=[],
             filtered_out=[],
             raw_symbols=["BTCUSDT", "ETHUSDT"],
         )
@@ -468,7 +471,7 @@ def test_cli_list_symbols_warns_about_unknown_symbols_with_any_filter_flag(
         }[trade_type]
         return ListSymbolsResult(
             matched=[known_info],
-            unmatched=["BTCZZZUNKNOWN", "ETHZZZUNKNOWN"],
+            inference_failures=["BTCZZZUNKNOWN", "ETHZZZUNKNOWN"],
             filtered_out=[],
             raw_symbols=[known_symbol, "BTCZZZUNKNOWN", "ETHZZZUNKNOWN"],
         )
@@ -486,9 +489,9 @@ def test_cli_list_symbols_warns_about_unknown_symbols_with_any_filter_flag(
     if json_output:
         document = json.loads(result.stdout)
         assert document["symbols"] == [known_symbol]
-        assert document["uninferable"] == ["BTCZZZUNKNOWN", "ETHZZZUNKNOWN"]
+        assert document["inference_failures"] == ["BTCZZZUNKNOWN", "ETHZZZUNKNOWN"]
         assert document["summary"]["returned_symbols"] == 1
-        assert document["summary"]["uninferable_symbols"] == 2
+        assert document["summary"]["inference_failure_count"] == 2
     else:
         assert result.stdout == f"{known_symbol}\n"
     assert len(stderr_messages) == 1
@@ -518,7 +521,7 @@ def test_cli_list_symbols_builds_um_filter_from_flags(monkeypatch) -> None:
                     is_stable_pair=False,
                 )
             ],
-            unmatched=[],
+            inference_failures=[],
             filtered_out=[],
         )
 
@@ -556,7 +559,7 @@ def test_cli_list_symbols_ignores_inapplicable_flags(monkeypatch) -> None:
 
     async def fake_run(self) -> ListSymbolsResult:
         assert self.symbol_filter is None
-        return ListSymbolsResult(matched=[], unmatched=["BTCUSDT"], filtered_out=[])
+        return ListSymbolsResult(matched=[], inference_failures=["BTCUSDT"], filtered_out=[])
 
     monkeypatch.setattr(
         "binance_datatool.workflow.ArchiveListSymbolsWorkflow.run",
@@ -597,7 +600,7 @@ def test_cli_list_symbols_builds_spot_filter(monkeypatch) -> None:
                     is_stable_pair=False,
                 )
             ],
-            unmatched=[],
+            inference_failures=[],
             filtered_out=[],
         )
 
@@ -630,7 +633,7 @@ def test_cli_list_symbols_builds_cm_filter(monkeypatch) -> None:
     async def fake_run(self) -> ListSymbolsResult:
         assert isinstance(self.symbol_filter, CmSymbolFilter)
         assert self.symbol_filter.contract_type is ContractType.delivery
-        return ListSymbolsResult(matched=[], unmatched=[], filtered_out=[])
+        return ListSymbolsResult(matched=[], inference_failures=[], filtered_out=[])
 
     monkeypatch.setattr(
         "binance_datatool.workflow.ArchiveListSymbolsWorkflow.run",

@@ -67,7 +67,8 @@ class ArchiveListSymbolsWorkflow:
         """Execute the workflow and return structured symbol results.
 
         Returns:
-            Raw symbols in archive order plus matched, inference-failed, and filtered-out buckets.
+            Raw symbols in archive order, with matched symbols, inference failures,
+            and filter exclusions.
         """
         quote_assets, exclude_leverage, exclude_stable_pairs, contract_type = _format_filter_values(
             self.symbol_filter
@@ -88,17 +89,20 @@ class ArchiveListSymbolsWorkflow:
         )
 
         inferred = []
-        unmatched: list[str] = []
+        inference_failures: list[str] = []
         for symbol in raw_symbols:
             info = infer_symbol_info(self.trade_type, symbol)
             if info is None:
-                unmatched.append(symbol)
+                inference_failures.append(symbol)
                 continue
             inferred.append(info)
 
         if self.symbol_filter is None:
             result = ListSymbolsResult(
-                matched=inferred, unmatched=unmatched, filtered_out=[], raw_symbols=raw_symbols
+                matched=inferred,
+                inference_failures=inference_failures,
+                filtered_out=[],
+                raw_symbols=raw_symbols,
             )
         else:
             matched = []
@@ -111,17 +115,17 @@ class ArchiveListSymbolsWorkflow:
 
             result = ListSymbolsResult(
                 matched=matched,
-                unmatched=unmatched,
+                inference_failures=inference_failures,
                 filtered_out=filtered_out,
                 raw_symbols=raw_symbols,
             )
 
         logger.info(
             "listed symbols: total_raw_symbols={} matched_symbols={} filtered_out_symbols={} "
-            "inference_failed_symbols={}",
+            "inference_failure_count={}",
             result.total_raw_symbols,
             result.matched_symbols,
             result.filtered_out_symbols,
-            result.inference_failed_symbols,
+            result.inference_failure_count,
         )
         return result

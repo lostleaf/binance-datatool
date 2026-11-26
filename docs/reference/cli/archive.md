@@ -29,22 +29,23 @@ binance-datatool list-symbols <TRADE_TYPE>
 | `--contract-type` | `ContractType` | `None` | Restrict futures symbols to `perpetual` or `delivery`. Ignored for spot. |
 | `--json` | `bool` | `False` | Emit one structured result with symbol selection and classification details. |
 
-**Selection:** when every filter flag is at its default, no filter is constructed and every
-symbol directory is returned in the archive's sorted listing order, including symbols whose
-metadata cannot be inferred. With any filter flag, only `ListSymbolsResult.matched` is
-selected. Flags that do not apply to the chosen market are ignored when filtering metadata
-but still enable filtered selection. Uninferable symbols are skipped and one warning on
-stderr gives their count and names, visible without `-v`. No warning is emitted when every
-symbol is inferable. `--freq` and `--type` select the archive prefix and do not enable filtering.
+With every filter flag at its default, the command returns every symbol directory in the
+archive's sorted listing order, including names with inference failures. With any filter
+flag, the command selects only `ListSymbolsResult.matched`. Flags that do not apply to
+the chosen market are ignored when filtering metadata but still enable filtered selection.
+When filtered selection skips symbols with inference failures, one warning on stderr
+gives their count and names, visible without `-v`. `--freq` and `--type` select the archive
+prefix without enabling filtering.
 
 These selection and warning rules apply to text and JSON output. Text output writes one
-selected symbol per line to stdout. Every returned result exits `0`, including filtered-out
-or uninferable names.
+selected symbol per line to stdout. Every returned result exits `0`, including results with
+filter exclusions or inference failures.
 
 ### JSON output
 
 For selected names, classification records, market-specific attributes, and counts, see
 [the `list-symbols` JSON fields](../../../skills/binance-datatool/references/json-results.md#list-symbols).
+See the [migration notes](../../migration.md#inference-failures) for the previous field names.
 
 **Examples:**
 
@@ -65,7 +66,7 @@ User runs:
   │ CLI layer  (cli/archive.py)                     │
   │  Parses arguments, builds a typed symbol filter,     │
   │  runs the workflow, prints raw or matched symbols,   │
-  │  and warns about uninferable symbols when filtering. │
+  │  and warns about inference failures when filtering. │
   └──────────────────────┬───────────────────────────────┘
                          │ trade_type, data_freq, data_type,
                          │ symbol_filter

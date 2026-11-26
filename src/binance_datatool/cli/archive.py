@@ -115,20 +115,20 @@ def list_symbols_command(
                 "returned_symbols": len(symbols),
                 "matched_symbols": result.matched_symbols,
                 "filtered_out_symbols": result.filtered_out_symbols,
-                "uninferable_symbols": result.inference_failed_symbols,
+                "inference_failure_count": result.inference_failure_count,
             },
             symbols=symbols,
             matched=[asdict(info) for info in result.matched],
             filtered_out=[asdict(info) for info in result.filtered_out],
-            uninferable=result.unmatched,
+            inference_failures=result.inference_failures,
         )
     else:
         for symbol in symbols:
             typer.echo(symbol)
-    if filtering and result.unmatched:
+    if filtering and result.inference_failures:
         typer.echo(
-            f"Warning: skipped {result.inference_failed_symbols} symbols whose metadata "
-            f"could not be inferred for filtering: {', '.join(result.unmatched)}",
+            f"Warning: skipped {result.inference_failure_count} symbols with inference failures "
+            f"({', '.join(result.inference_failures)})",
             err=True,
         )
 

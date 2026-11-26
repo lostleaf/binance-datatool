@@ -21,7 +21,7 @@ The format has no schema version or success field and can change between CLI rel
 | `symbols` | `returned_symbols` | Selected symbol names in archive listing order. |
 | `matched` | `matched_symbols` | Inferred records that pass the filters. |
 | `filtered_out` | `filtered_out_symbols` | Inferred records excluded by the filters. |
-| `uninferable` | `uninferable_symbols` | Names for which metadata could not be inferred. |
+| `inference_failures` | `inference_failure_count` | Raw symbol names whose metadata inference failed. |
 
 `summary.total_raw_symbols` is the sum of the three classification counts. With no filter
 flags, `symbols` contains all raw names. With any filter flag, it contains the names in

@@ -19,7 +19,7 @@ class ListSymbolsResult:
     """Structured result for archive symbol listing."""
 
     matched: list[SymbolInfo]
-    unmatched: list[str]
+    inference_failures: list[str]
     filtered_out: list[SymbolInfo]
     raw_symbols: list[str] = field(default_factory=list)
 
@@ -34,14 +34,14 @@ class ListSymbolsResult:
         return len(self.filtered_out)
 
     @property
-    def inference_failed_symbols(self) -> int:
-        """Return the number of raw symbols that failed symbol inference."""
-        return len(self.unmatched)
+    def inference_failure_count(self) -> int:
+        """Return the number of inference failures."""
+        return len(self.inference_failures)
 
     @property
     def total_raw_symbols(self) -> int:
         """Return the total number of raw symbols returned by the archive."""
-        return self.matched_symbols + self.filtered_out_symbols + self.inference_failed_symbols
+        return self.matched_symbols + self.filtered_out_symbols + self.inference_failure_count
 
 
 @dataclass(slots=True)

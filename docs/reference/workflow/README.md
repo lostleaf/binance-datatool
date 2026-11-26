@@ -42,9 +42,10 @@ async def run(self) -> ListSymbolsResult
    in `raw_symbols`.
 2. Dispatches each raw symbol through `infer_spot_info` / `infer_um_info` / `infer_cm_info`
    according to `trade_type`.
-3. Splits the results into `inferred` and `unmatched` (raw strings that failed inference).
-4. If `symbol_filter` is set, further splits `inferred` into `matched` and `filtered_out`
-   via `symbol_filter.matches()`. Otherwise `matched == inferred` and `filtered_out` is empty.
+3. Separates inferred records from raw symbol names with inference failures.
+4. If `symbol_filter` is set, separates the inferred records into `matched` and
+   `filtered_out` via `symbol_filter.matches()`. With no filter, all inferred records
+   go into `matched`.
 
 ## `ListSymbolsResult`
 
@@ -55,16 +56,15 @@ shared type.
 | Field | Type | Description |
 |-------|------|-------------|
 | `matched` | `list[SymbolInfo]` | Inferred symbols that passed the filter (or all inferred symbols when no filter is set). |
-| `unmatched` | `list[str]` | Raw symbols that could not be parsed by the per-market inference function. |
+| `inference_failures` | `list[str]` | Raw symbol names whose metadata inference failed. |
+| `inference_failure_count` | `int` | Read-only count equal to the length of `inference_failures`. |
 | `filtered_out` | `list[SymbolInfo]` | Inferred symbols rejected by the filter. Always empty when no filter is set. |
-| `raw_symbols` | `list[str]` | Every symbol returned by the archive in listing order, including uninferable and filtered-out symbols. Defaults to an empty list when constructing results manually. |
+| `raw_symbols` | `list[str]` | Every symbol returned by the archive in listing order, including inference failures and filter exclusions. Defaults to an empty list when constructing results manually. |
 
 Input order is preserved within each bucket. `raw_symbols` preserves the full interleaving
 across buckets so unfiltered CLI output can print every directory in archive order.
 
-**Migration:** Replace `result.unmatched_symbols` with `result.inference_failed_symbols` to
-count inference failures. Use `filtered_out_symbols` for symbols rejected by the filter and
-`unmatched` for the raw names that failed inference.
+See the [migration notes](../../migration.md#inference-failures) for the previous field names.
 
 ## `ArchiveListFilesWorkflow`
 

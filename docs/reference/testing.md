@@ -65,8 +65,8 @@ Read `.github/workflows/ci.yml` before changing push or pull-request checks, and
 
 [Weekly integration checks](../../.github/workflows/integration.yml) runs the full suite with
 `uv run pytest --run-integration` every Monday at 03:17 UTC and supports manual runs through
-GitHub Actions. It includes the archive-wide symbol inference check, so new unmatched symbol
-patterns fail the run. Push, pull-request, and release checks retain the default offline suite.
+GitHub Actions. The archive-wide symbol inference check rejects unexpected inference
+failures. Push, pull-request, and release checks retain the default offline suite.
 
 The exchangeInfo comparison skips with the HTTP status and endpoint error when Binance refuses
 access with HTTP 403 or 451, including during the SDK client's initial ping. This skip applies
