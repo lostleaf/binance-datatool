@@ -393,6 +393,8 @@ Returned by `ArchiveVerifyWorkflow.run()` in dry-run mode.
 
 All path lists preserve caller symbol order and sort paths within each symbol.
 The CLI prints `to_verify` paths in that same order for `verify --dry-run`.
+The Python field `skipped` counts ZIPs accepted through cached verification. The CLI exposes
+this count as `already verified` in the terminal summary and `summary.already_verified` in JSON.
 
 | Field / Property | Type | Description |
 |------------------|------|-------------|

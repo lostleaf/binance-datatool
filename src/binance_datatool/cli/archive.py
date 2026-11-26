@@ -533,6 +533,7 @@ def verify_command(
         raise typer.Exit(code=130) from None
 
     if isinstance(result, VerifyDiffResult):
+        already_verified = result.skipped
         if json_output:
             emit_json(
                 "verify",
@@ -540,7 +541,7 @@ def verify_command(
                 summary={
                     "total_zips": result.total_zips,
                     "to_verify": len(result.to_verify),
-                    "skipped": result.skipped,
+                    "already_verified": already_verified,
                     "orphan_zips": len(result.orphan_zips),
                     "orphan_checksums": len(result.orphan_checksums),
                 },
@@ -559,7 +560,7 @@ def verify_command(
                 )
         typer.echo(
             (
-                f"{len(result.to_verify)} to verify, {result.skipped} up to date, "
+                f"{len(result.to_verify)} to verify, {already_verified} already verified, "
                 f"{len(result.orphan_zips)} orphan zip, "
                 f"{len(result.orphan_checksums)} orphan checksum"
             ),

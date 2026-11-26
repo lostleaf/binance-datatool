@@ -435,10 +435,10 @@ BTCUSDT/1m/BTCUSDT-1m-2024-01-01.zip
 BTCUSDT/1m/BTCUSDT-1m-2024-01-02.zip
 ```
 
-A summary line is printed to stderr:
+The summary on stderr counts ZIPs with current verification markers as `already verified`.
 
 ```
-12 to verify, 5 up to date, 0 orphan zip, 0 orphan checksum
+12 to verify, 5 already verified, 0 orphan zip, 0 orphan checksum
 ```
 
 If no local zip files match the requested selection, the command still exits `0`
@@ -456,9 +456,6 @@ Verification operates on ZIP files. `verified` counts ZIPs that passed SHA256 co
 this run, `failed` counts ZIPs that failed, and `skipped` counts ZIPs accepted through cached
 verification without hashing again. Orphan ZIP and orphan checksum counts are separate;
 clearing an orphan ZIP's markers does not delete the ZIP.
-
-The dry-run summary's existing phrase `up to date` denotes cached verification skips. It does
-not use the download comparison rules or mean those ZIPs were checked again in this run.
 
 In verify mode, the following are printed to stderr:
 

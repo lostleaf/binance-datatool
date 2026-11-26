@@ -94,15 +94,16 @@ Verification counts local ZIPs. The sibling checksum participates in the compari
 | Summary field | Mode | Meaning |
 |---------------|------|---------|
 | `total_zips` | Both | ZIPs discovered, including orphan ZIPs. |
-| `skipped` | Both | ZIPs accepted using current verification markers. |
 | `orphan_zips` | Both | ZIPs missing a checksum. Real runs keep the ZIP and clear its markers. |
 | `orphan_checksums` | Both | Checksums missing a ZIP. Real runs delete the checksum and clear related markers. These checksums are outside `total_zips`. |
 | `to_verify` | Dry-run | Length of the top-level `to_verify` array. |
+| `already_verified` | Dry-run | ZIPs accepted using current verification markers. |
 | `verified` | Real | ZIPs that passed SHA256 comparison during this run. |
 | `failed` | Real | Length of the top-level `failed_details` array. |
+| `skipped` | Real | ZIPs accepted using current verification markers. |
 
 - **Dry-run** adds `to_verify`, the absolute ZIP path strings awaiting hashing.
-  Counts satisfy `total_zips = to_verify + skipped + orphan_zips`.
+  Counts satisfy `total_zips = to_verify + already_verified + orphan_zips`.
 - **Real verification** adds `failed_details`, ordered by input symbol and then by path.
   Each record has `path` (absolute ZIP path) and `detail` (failure message). These records
   survive default deletion of failed pairs. Successful and cached ZIPs have counts only.

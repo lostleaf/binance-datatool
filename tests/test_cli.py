@@ -1728,7 +1728,7 @@ def test_cli_verify_dry_run_outputs_paths_and_summary(monkeypatch) -> None:
     assert result.stdout == (
         "BTCUSDT/1m/BTCUSDT-1m-2020-01-01.zip\nBTCUSDT/1m/BTCUSDT-1m-2020-01-02.zip\n"
     )
-    assert result.stderr.strip()
+    assert "already verified" in result.stderr
 
 
 def test_cli_verify_dry_run_preserves_workflow_path_order(monkeypatch, tmp_path: Path) -> None:
@@ -2372,7 +2372,7 @@ def test_cli_verify_json_dry_run_plan(monkeypatch, tmp_path) -> None:
         "summary": {
             "total_zips": 6,
             "to_verify": 2,
-            "skipped": 3,
+            "already_verified": 3,
             "orphan_zips": 1,
             "orphan_checksums": 1,
         },
@@ -2495,7 +2495,7 @@ def test_cli_verify_json_results(monkeypatch, tmp_path, dry_run, scenario) -> No
             "summary": {
                 "total_zips": len(pending) + skipped + len(orphan_zips),
                 "to_verify": len(pending),
-                "skipped": skipped,
+                "already_verified": skipped,
                 "orphan_zips": len(orphan_zips),
                 "orphan_checksums": len(orphan_checksums),
             },
@@ -2568,8 +2568,11 @@ def test_cli_verify_json_orphan_cleanup(monkeypatch, tmp_path, dry_run) -> None:
         "dry_run": dry_run,
         "summary": {
             "total_zips": 2,
-            **({"to_verify": 0} if dry_run else {"verified": 0, "failed": 0}),
-            "skipped": 0,
+            **(
+                {"to_verify": 0, "already_verified": 0}
+                if dry_run
+                else {"verified": 0, "failed": 0, "skipped": 0}
+            ),
             "orphan_zips": 2,
             "orphan_checksums": 1,
         },
@@ -2621,7 +2624,7 @@ def test_cli_verify_json_dry_run_preserves_pending_pair(monkeypatch, tmp_path) -
         "summary": {
             "total_zips": 1,
             "to_verify": 1,
-            "skipped": 0,
+            "already_verified": 0,
             "orphan_zips": 0,
             "orphan_checksums": 0,
         },
