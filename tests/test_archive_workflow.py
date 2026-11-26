@@ -25,8 +25,8 @@ from binance_datatool.common import (
     ContractType,
     DataFrequency,
     DataType,
+    MarketType,
     SpotSymbolFilter,
-    TradeType,
     UmSymbolFilter,
 )
 from binance_datatool.workflow import (
@@ -64,11 +64,32 @@ def _symbol_verify_dir(tmp_path: Path, *, symbol: str = "BTCUSDT", interval: str
     return tmp_path / "data" / "spot" / "daily" / "klines" / symbol / interval
 
 
+async def test_archive_list_symbols_requires_market_type_keyword() -> None:
+    """Callers can select a market with the new keyword and the old one is rejected."""
+    client = FakeArchiveClient(symbols=["BTCUSDT"])
+    workflow = ArchiveListSymbolsWorkflow(
+        market_type=MarketType.spot,
+        data_freq=DataFrequency.daily,
+        data_type=DataType.klines,
+        client=client,
+    )
+    result = await workflow.run()
+    assert result.raw_symbols == ["BTCUSDT"]
+
+    with pytest.raises(TypeError):
+        ArchiveListSymbolsWorkflow(
+            trade_type=MarketType.spot,
+            data_freq=DataFrequency.daily,
+            data_type=DataType.klines,
+            client=client,
+        )
+
+
 @pytest.mark.asyncio
 async def test_archive_list_symbols_workflow_reports_spot_inference_failures() -> None:
     """Spot workflows should infer known symbols and preserve inference failures."""
     workflow = ArchiveListSymbolsWorkflow(
-        trade_type=TradeType.spot,
+        market_type=MarketType.spot,
         data_freq=DataFrequency.daily,
         data_type=DataType.klines,
         client=FakeArchiveClient(symbols=["BTCUSDT", "BTCZZZUNKNOWN", "ETHUSDT"]),
@@ -88,7 +109,7 @@ async def test_archive_list_symbols_workflow_reports_spot_inference_failures() -
 async def test_archive_list_symbols_workflow_applies_spot_filter_and_preserves_order() -> None:
     """Spot filtering reports inference failures separately from filter exclusions."""
     workflow = ArchiveListSymbolsWorkflow(
-        trade_type=TradeType.spot,
+        market_type=MarketType.spot,
         data_freq=DataFrequency.daily,
         data_type=DataType.klines,
         symbol_filter=SpotSymbolFilter(
@@ -122,7 +143,7 @@ async def test_archive_list_symbols_workflow_applies_spot_filter_and_preserves_o
 async def test_archive_list_symbols_workflow_applies_um_filter() -> None:
     """USDⓈ-M workflows should filter by quote, contract type, and stable-pair status."""
     workflow = ArchiveListSymbolsWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.daily,
         data_type=DataType.klines,
         symbol_filter=UmSymbolFilter(
@@ -144,7 +165,7 @@ async def test_archive_list_symbols_workflow_applies_um_filter() -> None:
 async def test_archive_list_symbols_workflow_applies_cm_filter() -> None:
     """COIN-M workflows should filter inferred symbols and keep inference failures."""
     workflow = ArchiveListSymbolsWorkflow(
-        trade_type=TradeType.cm,
+        market_type=MarketType.cm,
         data_freq=DataFrequency.daily,
         data_type=DataType.klines,
         symbol_filter=CmSymbolFilter(contract_type=ContractType.delivery),
@@ -163,7 +184,7 @@ async def test_archive_list_symbols_workflow_applies_cm_filter() -> None:
 async def test_archive_list_symbols_workflow_integration_applies_spot_filter() -> None:
     """Real archive listings should flow through infer and spot filtering correctly."""
     workflow = ArchiveListSymbolsWorkflow(
-        trade_type=TradeType.spot,
+        market_type=MarketType.spot,
         data_freq=DataFrequency.daily,
         data_type=DataType.klines,
         symbol_filter=SpotSymbolFilter(
@@ -187,7 +208,7 @@ async def test_archive_list_symbols_workflow_integration_applies_spot_filter() -
 async def test_archive_list_files_workflow_preserves_input_order(sample_archive_files) -> None:
     """File-list workflow results should preserve the caller's symbol order."""
     workflow = ArchiveListFilesWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["ETHUSDT", "BTCUSDT"],
@@ -214,7 +235,7 @@ async def test_archive_list_files_workflow_retains_timeout_and_counts(
 ) -> None:
     """A real client preserves timeout diagnostics and successful empty listings."""
     result = await ArchiveListFilesWorkflow(
-        TradeType.um,
+        MarketType.um,
         DataFrequency.monthly,
         DataType.funding_rate,
         ["ETHUSDT", "BNBUSDT", "BTCUSDT"],
@@ -236,7 +257,7 @@ async def test_archive_list_files_workflow_retains_timeout_and_counts(
 async def test_archive_list_files_workflow_captures_per_symbol_errors(sample_archive_files) -> None:
     """Workflow failures should be isolated to the failing symbol."""
     workflow = ArchiveListFilesWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT", "ETHUSDT"],
@@ -260,7 +281,7 @@ def test_archive_list_files_workflow_requires_interval_for_kline_types() -> None
     """Kline-class data types should require an interval."""
     with pytest.raises(ValueError):
         ArchiveListFilesWorkflow(
-            trade_type=TradeType.um,
+            market_type=MarketType.um,
             data_freq=DataFrequency.daily,
             data_type=DataType.klines,
             symbols=["BTCUSDT"],
@@ -271,7 +292,7 @@ def test_archive_list_files_workflow_rejects_interval_for_non_kline_types() -> N
     """Non-kline data types should reject interval arguments."""
     with pytest.raises(ValueError):
         ArchiveListFilesWorkflow(
-            trade_type=TradeType.um,
+            market_type=MarketType.um,
             data_freq=DataFrequency.monthly,
             data_type=DataType.funding_rate,
             symbols=["BTCUSDT"],
@@ -311,7 +332,7 @@ async def test_archive_download_workflow_builds_new_updated_and_skipped_diff(tmp
     os.utime(skipped_local, (remote_skipped.last_modified.timestamp() + 100,) * 2)
 
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT"],
@@ -372,7 +393,7 @@ async def test_download_comparison_preserves_order_and_filesystem(
         path: (path.read_bytes(), path.stat()) for path in tmp_path.rglob("*") if path.is_file()
     }
     result = await ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["Z", "FAIL2", "A", "FAIL1"],
@@ -432,7 +453,7 @@ async def test_download_comparison_follows_symlinks(tmp_path: Path, extra_object
             ArchiveFile(key=path.name, size=4, last_modified=datetime(2000, 1, 1, tzinfo=UTC))
         )
     result = await ArchiveDownloadWorkflow(
-        TradeType.um,
+        MarketType.um,
         DataFrequency.monthly,
         DataType.funding_rate,
         ["A"],
@@ -478,7 +499,7 @@ async def test_download_comparison_directory_permissions(
         else:
             expected_error = False
         workflow = ArchiveDownloadWorkflow(
-            TradeType.um,
+            MarketType.um,
             DataFrequency.monthly,
             DataType.funding_rate,
             ["A"],
@@ -528,7 +549,7 @@ async def test_download_comparison_stat_errors_follow_runtime(
     # Inject errors through OS interfaces; assertions remain at the dry-run seam.
     monkeypatch.setattr(os, "stat", failing_stat)
     workflow = ArchiveDownloadWorkflow(
-        TradeType.um,
+        MarketType.um,
         DataFrequency.monthly,
         DataType.funding_rate,
         ["A"],
@@ -616,7 +637,7 @@ async def test_download_comparison_falls_back_when_directory_scan_fails(
 
     monkeypatch.setattr(os, "stat", failing_stat)
     workflow = ArchiveDownloadWorkflow(
-        TradeType.um,
+        MarketType.um,
         DataFrequency.monthly,
         DataType.funding_rate,
         ["A"],
@@ -663,7 +684,7 @@ async def test_archive_download_workflow_redownloads_size_mismatch(tmp_path: Pat
         return Aria2DownloadResult(requested=len(requests), failed_requests=[])
 
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT"],
@@ -711,7 +732,7 @@ async def test_archive_download_workflow_redownloads_file_with_aria2_control(
         return Aria2DownloadResult(requested=len(requests), failed_requests=[])
 
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT"],
@@ -761,7 +782,7 @@ async def test_archive_download_workflow_invalidates_new_and_legacy_verified_mar
         return Aria2DownloadResult(requested=len(requests), failed_requests=[])
 
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT"],
@@ -810,7 +831,7 @@ async def test_archive_download_workflow_deletes_updated_files_before_download(
         return Aria2DownloadResult(requested=len(requests), failed_requests=[])
 
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT"],
@@ -851,7 +872,7 @@ async def test_archive_download_workflow_dry_run_keeps_verified_markers(tmp_path
     timestamped_marker.write_text("", encoding="utf-8")
 
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT"],
@@ -892,7 +913,7 @@ def test_archive_download_workflow_groups_marker_invalidation_by_directory(
     monkeypatch.setattr(SymbolArchiveDir, "clear_markers_many", record_clear)
 
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT"],
@@ -953,7 +974,7 @@ async def test_archive_download_workflow_returns_listing_failures_and_download_c
         return Aria2DownloadResult(requested=len(requests), failed_requests=requests[:1])
 
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT", "ETHUSDT"],
@@ -994,7 +1015,7 @@ def test_verify_workflow_diff_classifies_files(tmp_path) -> None:
     legacy_marker.write_text("", encoding="utf-8")
 
     workflow = ArchiveVerifyWorkflow(
-        trade_type=TradeType.spot,
+        market_type=MarketType.spot,
         data_freq=DataFrequency.daily,
         data_type=DataType.klines,
         symbols=["BTCUSDT"],
@@ -1023,7 +1044,7 @@ def test_verify_workflow_diff_detects_orphans(tmp_path) -> None:
     orphan_checksum.write_text("abc  missing.zip\n", encoding="utf-8")
 
     workflow = ArchiveVerifyWorkflow(
-        trade_type=TradeType.spot,
+        market_type=MarketType.spot,
         data_freq=DataFrequency.daily,
         data_type=DataType.klines,
         symbols=["BTCUSDT"],
@@ -1072,7 +1093,7 @@ def test_verify_workflow_preserves_symbol_order_when_first_directory_is_slower(
     monkeypatch.setattr(os, "scandir", slower_first_directory)
     monkeypatch.setattr(os, "stat", slower_first_stat)
     workflow = ArchiveVerifyWorkflow(
-        trade_type=TradeType.spot,
+        market_type=MarketType.spot,
         data_freq=DataFrequency.daily,
         data_type=DataType.klines,
         symbols=["ETHUSDT", "MISSING", "BTCUSDT"],
@@ -1110,7 +1131,7 @@ def test_verify_workflow_dry_run_preserves_files(tmp_path) -> None:
     timestamped_marker.write_text("", encoding="utf-8")
 
     workflow = ArchiveVerifyWorkflow(
-        trade_type=TradeType.spot,
+        market_type=MarketType.spot,
         data_freq=DataFrequency.daily,
         data_type=DataType.klines,
         symbols=["BTCUSDT"],
@@ -1151,7 +1172,7 @@ def test_verify_workflow_processes_results_default(tmp_path) -> None:
     orphan_checksum_marker.write_text("", encoding="utf-8")
 
     workflow = ArchiveVerifyWorkflow(
-        trade_type=TradeType.spot,
+        market_type=MarketType.spot,
         data_freq=DataFrequency.daily,
         data_type=DataType.klines,
         symbols=["BTCUSDT"],
@@ -1199,7 +1220,7 @@ def test_verify_workflow_keep_failed_preserves_files(tmp_path) -> None:
     timestamped_marker.write_text("", encoding="utf-8")
 
     workflow = ArchiveVerifyWorkflow(
-        trade_type=TradeType.spot,
+        market_type=MarketType.spot,
         data_freq=DataFrequency.daily,
         data_type=DataType.klines,
         symbols=["BTCUSDT"],
@@ -1243,7 +1264,7 @@ def test_verify_workflow_cleans_all_orphan_markers(
     unrelated_marker.write_text("", encoding="utf-8")
 
     workflow = ArchiveVerifyWorkflow(
-        trade_type=TradeType.spot,
+        market_type=MarketType.spot,
         data_freq=DataFrequency.daily,
         data_type=DataType.klines,
         symbols=["BTCUSDT"],
@@ -1273,7 +1294,7 @@ def test_verify_workflow_marker_timestamp_rounding(tmp_path) -> None:
     marker.write_text("", encoding="utf-8")
 
     workflow = ArchiveVerifyWorkflow(
-        trade_type=TradeType.spot,
+        market_type=MarketType.spot,
         data_freq=DataFrequency.daily,
         data_type=DataType.klines,
         symbols=["BTCUSDT"],
@@ -1303,7 +1324,7 @@ async def test_archive_download_workflow_sets_aria2_concurrency(
 
     monkeypatch.setattr("subprocess.run", fake_run)
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT"],
@@ -1322,7 +1343,7 @@ async def test_archive_download_no_work_retains_empty_failures(tmp_path) -> None
     """An empty returned download has no final failed paths or local writes."""
     home = tmp_path / "missing-home"
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT"],
@@ -1355,7 +1376,7 @@ async def test_archive_download_retains_only_final_retry_failures(
 
     monkeypatch.setattr("subprocess.run", fake_run)
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT", "ETHUSDT"],
@@ -1400,7 +1421,7 @@ async def test_archive_download_missing_aria2_preserves_replacement_archive(
         for path in tmp_path.rglob("*")
     }
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT"],
@@ -1424,7 +1445,7 @@ async def test_archive_download_missing_aria2_creates_no_archive(
     monkeypatch.setattr("shutil.which", lambda name: None)
     home = tmp_path / "missing-home"
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT"],
@@ -1461,7 +1482,7 @@ async def test_archive_download_does_not_require_unused_backend(
         return Aria2DownloadResult(requested=len(requests), failed_requests=[])
 
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT"],
@@ -1507,7 +1528,7 @@ async def test_archive_download_reuses_prepared_executable_after_replacement(
 
     monkeypatch.setattr("subprocess.run", fake_run)
     workflow = ArchiveDownloadWorkflow(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         data_freq=DataFrequency.monthly,
         data_type=DataType.funding_rate,
         symbols=["BTCUSDT"],
@@ -1542,7 +1563,7 @@ def test_verify_orphan_markers_preserve_single_target_matching(
 
     monkeypatch.setattr(Path, "glob", forbidden_glob)
     result = ArchiveVerifyWorkflow(
-        TradeType.spot,
+        MarketType.spot,
         DataFrequency.daily,
         DataType.klines,
         ["BTCUSDT"],

@@ -19,11 +19,12 @@ from binance_datatool.common import (
     ContractType,
     DataFrequency,
     DataType,
-    TradeType,
+    MarketType,
     build_symbol_filter,
     resolve_archive_home,
 )
 from binance_datatool.common.constants import S3_DOWNLOAD_PREFIX
+from binance_datatool.common.enums import __getattr__ as __getattr__
 from binance_datatool.common.path import archive_path_parts, validate_interval
 from binance_datatool.workflow import (
     ArchiveDownloadWorkflow,
@@ -40,6 +41,8 @@ from binance_datatool.workflow import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
+
+    TradeType = MarketType
 
 
 DataFrequencyOption: TypeAlias = Annotated[
@@ -65,7 +68,7 @@ ProgressBarOption: TypeAlias = Annotated[
 
 @app.command("list-symbols")
 def list_symbols_command(
-    trade_type: Annotated[TradeType, typer.Argument(help="Market segment.")],
+    market_type: Annotated[MarketType, typer.Argument(help="Market type.")],
     data_freq: DataFrequencyOption = DataFrequency.daily,
     data_type: DataTypeOption = DataType.klines,
     quotes: Annotated[
@@ -91,14 +94,14 @@ def list_symbols_command(
     Prints one symbol per line or a structured JSON classification result.
     """
     symbol_filter = build_symbol_filter(
-        trade_type=trade_type,
+        market_type=market_type,
         quote_assets=frozenset(quote.upper() for quote in quotes) if quotes else None,
         exclude_leverage=exclude_leverage,
         exclude_stable_pairs=exclude_stables,
         contract_type=contract_type,
     )
     workflow = ArchiveListSymbolsWorkflow(
-        trade_type=trade_type,
+        market_type=market_type,
         data_freq=data_freq,
         data_type=data_type,
         symbol_filter=symbol_filter,
@@ -176,12 +179,12 @@ def _matches_output_filter(
 
 def _format_relative_path(
     key: str,
-    trade_type: TradeType,
+    market_type: MarketType,
     data_freq: DataFrequency,
     data_type: DataType,
 ) -> str:
     """Format a key relative to the shared archive prefix."""
-    prefix = "/".join(archive_path_parts(trade_type, data_freq, data_type)) + "/"
+    prefix = "/".join(archive_path_parts(market_type, data_freq, data_type)) + "/"
     return key.removeprefix(prefix)
 
 
@@ -189,12 +192,12 @@ def _format_local_relative_path(
     path: Path,
     *,
     archive_home: Path,
-    trade_type: TradeType,
+    market_type: MarketType,
     data_freq: DataFrequency,
     data_type: DataType,
 ) -> str:
     """Format a local archive path relative to the shared archive prefix."""
-    prefix = archive_home.joinpath(*archive_path_parts(trade_type, data_freq, data_type))
+    prefix = archive_home.joinpath(*archive_path_parts(market_type, data_freq, data_type))
     return str(path.relative_to(prefix))
 
 
@@ -205,7 +208,7 @@ def _warn_if_empty_remote(*, total_remote: int, has_failures: bool) -> None:
 
     typer.echo(
         (
-            "Warning: no archive files found; check --freq, --type, and trade_type "
+            "Warning: no archive files found. Check the market type, --freq, and --type "
             "(for example, futures fundingRate requires --freq monthly)."
         ),
         err=True,
@@ -257,7 +260,7 @@ def _finalize_download_result(result: DiffResult | DownloadResult) -> None:
 
 @app.command("list-files")
 def list_files_command(
-    trade_type: Annotated[TradeType, typer.Argument(help="Market segment.")],
+    market_type: Annotated[MarketType, typer.Argument(help="Market type.")],
     symbols: Annotated[list[str] | None, typer.Argument(help="Symbols to list files for.")] = None,
     data_freq: DataFrequencyOption = DataFrequency.daily,
     data_type: DataTypeOption = DataType.klines,
@@ -291,7 +294,7 @@ def list_files_command(
         raise typer.BadParameter("No symbols given.", param_hint="SYMBOLS")
 
     workflow = ArchiveListFilesWorkflow(
-        trade_type=trade_type,
+        market_type=market_type,
         data_freq=data_freq,
         data_type=data_type,
         symbols=resolved_symbols,
@@ -333,7 +336,7 @@ def list_files_command(
 
             relative_path = _format_relative_path(
                 archive_file.key,
-                trade_type=trade_type,
+                market_type=market_type,
                 data_freq=data_freq,
                 data_type=data_type,
             )
@@ -371,7 +374,7 @@ def list_files_command(
 @app.command("download")
 def download_command(
     ctx: typer.Context,
-    trade_type: Annotated[TradeType, typer.Argument(help="Market segment.")],
+    market_type: Annotated[MarketType, typer.Argument(help="Market type.")],
     symbols: Annotated[list[str] | None, typer.Argument(help="Symbols to download.")] = None,
     data_freq: DataFrequencyOption = DataFrequency.daily,
     data_type: DataTypeOption = DataType.klines,
@@ -405,7 +408,7 @@ def download_command(
 
     archive_home = _resolve_archive_home(ctx)
     workflow = ArchiveDownloadWorkflow(
-        trade_type=trade_type,
+        market_type=market_type,
         data_freq=data_freq,
         data_type=data_type,
         symbols=resolved_symbols,
@@ -453,7 +456,7 @@ def download_command(
             for entry in result.to_download:
                 typer.echo(
                     f"{entry.reason}\t{entry.remote.size}\t"
-                    f"{_format_relative_path(entry.remote.key, trade_type, data_freq, data_type)}"
+                    f"{_format_relative_path(entry.remote.key, market_type, data_freq, data_type)}"
                 )
         typer.echo(
             f"{len(result.to_download)} files to download, {result.skipped} up to date",
@@ -489,7 +492,7 @@ def download_command(
 @app.command("verify")
 def verify_command(
     ctx: typer.Context,
-    trade_type: Annotated[TradeType, typer.Argument(help="Market segment.")],
+    market_type: Annotated[MarketType, typer.Argument(help="Market type.")],
     symbols: Annotated[list[str] | None, typer.Argument(help="Symbols to verify.")] = None,
     data_freq: DataFrequencyOption = DataFrequency.daily,
     data_type: DataTypeOption = DataType.klines,
@@ -514,7 +517,7 @@ def verify_command(
 
     archive_home = _resolve_archive_home(ctx)
     workflow = ArchiveVerifyWorkflow(
-        trade_type=trade_type,
+        market_type=market_type,
         data_freq=data_freq,
         data_type=data_type,
         symbols=resolved_symbols,
@@ -553,7 +556,7 @@ def verify_command(
                     _format_local_relative_path(
                         zip_path,
                         archive_home=archive_home,
-                        trade_type=trade_type,
+                        market_type=market_type,
                         data_freq=data_freq,
                         data_type=data_type,
                     )

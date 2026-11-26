@@ -6,9 +6,9 @@ from binance_datatool.common import (
     CmSymbolFilter,
     CmSymbolInfo,
     ContractType,
+    MarketType,
     SpotSymbolFilter,
     SpotSymbolInfo,
-    TradeType,
     UmSymbolFilter,
     UmSymbolInfo,
     build_symbol_filter,
@@ -163,7 +163,7 @@ def test_build_symbol_filter_returns_none_when_no_applicable_constraints_are_ena
     """The builder should skip creating filters when every relevant option is a no-op."""
     assert (
         build_symbol_filter(
-            trade_type=TradeType.spot,
+            market_type=MarketType.spot,
             quote_assets=None,
             exclude_leverage=False,
             exclude_stable_pairs=False,
@@ -173,7 +173,7 @@ def test_build_symbol_filter_returns_none_when_no_applicable_constraints_are_ena
     )
     assert (
         build_symbol_filter(
-            trade_type=TradeType.um,
+            market_type=MarketType.um,
             quote_assets=None,
             exclude_leverage=True,
             exclude_stable_pairs=False,
@@ -183,7 +183,7 @@ def test_build_symbol_filter_returns_none_when_no_applicable_constraints_are_ena
     )
     assert (
         build_symbol_filter(
-            trade_type=TradeType.cm,
+            market_type=MarketType.cm,
             quote_assets=frozenset({"USDT"}),
             exclude_leverage=True,
             exclude_stable_pairs=True,
@@ -196,21 +196,21 @@ def test_build_symbol_filter_returns_none_when_no_applicable_constraints_are_ena
 def test_build_symbol_filter_returns_market_specific_filter_types() -> None:
     """The builder should produce the expected filter dataclass for each market."""
     spot_filter = build_symbol_filter(
-        trade_type=TradeType.spot,
+        market_type=MarketType.spot,
         quote_assets=frozenset({"USDT"}),
         exclude_leverage=True,
         exclude_stable_pairs=True,
         contract_type=ContractType.delivery,
     )
     um_filter = build_symbol_filter(
-        trade_type=TradeType.um,
+        market_type=MarketType.um,
         quote_assets=frozenset({"USDT"}),
         exclude_leverage=True,
         exclude_stable_pairs=True,
         contract_type=ContractType.perpetual,
     )
     cm_filter = build_symbol_filter(
-        trade_type=TradeType.cm,
+        market_type=MarketType.cm,
         quote_assets=frozenset({"USDT"}),
         exclude_leverage=True,
         exclude_stable_pairs=True,

@@ -9,7 +9,7 @@ Most user-facing imports should prefer the package-level
 `binance_datatool.common` re-export surface when it exposes the name you need:
 
 ```python
-from binance_datatool.common import DataFrequency, DataType, TradeType, resolve_archive_home
+from binance_datatool.common import DataFrequency, DataType, MarketType, resolve_archive_home
 ```
 
 That package currently re-exports the shared enums, symbol-info dataclasses,
@@ -26,7 +26,7 @@ from binance_datatool.common.path import ARCHIVE_HOME_ENV_VAR
 | Module | Description |
 |--------|-------------|
 | [common.constants](common/constants.md) | S3 settings, quote assets, stablecoins, leverage rules. |
-| [common.enums](common/enums.md) | TradeType, DataFrequency, DataType, ContractType. |
+| [common.enums](common/enums.md) | MarketType, DataFrequency, DataType, ContractType. |
 | [common.filter](common/filter.md) | Typed symbol filters and `build_symbol_filter()`. |
 | [common.types](common/types.md) | SymbolInfoBase and per-market symbol info dataclasses. |
 | [common.logging](common/logging.md) | `configure_cli_logging` helper for CLI entry points. |

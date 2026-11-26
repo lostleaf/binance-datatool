@@ -12,7 +12,7 @@ and empty stdout.
 ## `list-symbols`
 
 ```
-binance-datatool list-symbols <TRADE_TYPE>
+binance-datatool list-symbols <MARKET_TYPE>
     [--freq FREQ] [--type TYPE]
     [--quote QUOTE ...] [--exclude-leverage] [--exclude-stables]
     [--contract-type CONTRACT_TYPE] [--json]
@@ -20,7 +20,7 @@ binance-datatool list-symbols <TRADE_TYPE>
 
 | Argument / Option | Type | Default | Description |
 |-------------------|------|---------|-------------|
-| `TRADE_TYPE` | `TradeType` | *(required)* | Market segment (positional argument). |
+| `MARKET_TYPE` | `MarketType` | *(required)* | Market type (positional argument). |
 | `--freq` | `DataFrequency` | `daily` | Partition frequency. |
 | `--type` | `DataType` | `klines` | Dataset type. |
 | `--quote` | `list[str]` | `None` | Filter by quote asset. Repeat to allow multiple values. Normalized to uppercase and deduplicated. Applies to spot and USDⓈ-M. |
@@ -68,7 +68,7 @@ User runs:
   │  runs the workflow, prints raw or matched symbols,   │
   │  and warns about inference failures when filtering. │
   └──────────────────────┬───────────────────────────────┘
-                         │ trade_type, data_freq, data_type,
+                         │ market_type, data_freq, data_type,
                          │ symbol_filter
   ┌──────────────────────▼───────────────────────────────┐
   │ Workflow  (workflow/)                  │
@@ -76,7 +76,7 @@ User runs:
   │  market, applies the filter, and returns a           │
   │  ListSymbolsResult.                                  │
   └──────────────────────┬───────────────────────────────┘
-                         │ trade_type, data_freq, data_type
+                         │ market_type, data_freq, data_type
   ┌──────────────────────▼───────────────────────────────┐
   │ Archive Client  (archive/client.py)             │
   │  Issues paginated S3 XML listings against            │
@@ -88,7 +88,7 @@ User runs:
 ## `list-files`
 
 ```
-binance-datatool list-files <TRADE_TYPE> [SYMBOLS...]
+binance-datatool list-files <MARKET_TYPE> [SYMBOLS...]
     [--freq FREQ] [--type TYPE] [--interval INTERVAL]
     [-l | --long]
     [--only-zip | --only-checksum]
@@ -100,7 +100,7 @@ preserving the caller-provided symbol order.
 
 | Argument / Option | Type | Default | Description |
 |-------------------|------|---------|-------------|
-| `TRADE_TYPE` | `TradeType` | *(required)* | Market segment (positional argument). |
+| `MARKET_TYPE` | `MarketType` | *(required)* | Market type (positional argument). |
 | `SYMBOLS` | `list[str]` | *(see below)* | Symbols to list, as variadic positional arguments. Accepts lowercase input; every symbol is normalized to uppercase before being passed to the workflow. |
 | `--freq` | `DataFrequency` | `daily` | Partition frequency. |
 | `--type` | `DataType` | `klines` | Dataset type. |
@@ -216,7 +216,7 @@ User runs:
   │  prints short or TSV long output; logs per-symbol    │
   │  failures to stderr and exits 2 if any failed.       │
   └──────────────────────┬───────────────────────────────┘
-                         │ trade_type, data_freq, data_type,
+                         │ market_type, data_freq, data_type,
                          │ symbols, interval
   ┌──────────────────────▼───────────────────────────────┐
   │ Workflow  (workflow/)                  │
@@ -227,7 +227,7 @@ User runs:
   │  into SymbolListFilesResult.error and preserves      │
   │  caller input order.                                 │
   └──────────────────────┬───────────────────────────────┘
-                         │ trade_type, data_freq, data_type,
+                         │ market_type, data_freq, data_type,
                          │ symbol, interval, session
   ┌──────────────────────▼───────────────────────────────┐
   │ Archive Client  (archive/client.py)             │
@@ -248,7 +248,7 @@ to an `--interval` usage error with exit status 2. See the
 ## `download`
 
 ```
-binance-datatool [--archive-home PATH] download <TRADE_TYPE> [SYMBOLS...]
+binance-datatool [--archive-home PATH] download <MARKET_TYPE> [SYMBOLS...]
     [--freq FREQ] [--type TYPE] [--interval INTERVAL]
     [-n | --dry-run]
     [--aria2-proxy] [--concurrency N]
@@ -265,7 +265,7 @@ this case, so JSON mode emits no result document.
 
 | Argument / Option | Type | Default | Description |
 |-------------------|------|---------|-------------|
-| `TRADE_TYPE` | `TradeType` | *(required)* | Market segment (positional argument). |
+| `MARKET_TYPE` | `MarketType` | *(required)* | Market type (positional argument). |
 | `SYMBOLS` | `list[str]` | *(see below)* | Symbols to download, as variadic positional arguments. Same resolution rules as `list-files`. |
 | `--freq` | `DataFrequency` | `daily` | Partition frequency. |
 | `--type` | `DataType` | `klines` | Dataset type. |
@@ -371,7 +371,7 @@ User runs:
   │  workflow; prints dry-run TSV or download summary;   │
   │  logs listing errors to stderr and exits 2 on fail.  │
   └──────────────────────┬───────────────────────────────┘
-                         │ trade_type, data_freq, data_type,
+                         │ market_type, data_freq, data_type,
                          │ symbols, archive_home, interval,
                          │ dry_run, inherit_aria2_proxy
   ┌──────────────────────▼───────────────────────────────┐
@@ -398,7 +398,7 @@ User runs:
 ## `verify`
 
 ```
-binance-datatool [--archive-home PATH] verify <TRADE_TYPE> [SYMBOLS...]
+binance-datatool [--archive-home PATH] verify <MARKET_TYPE> [SYMBOLS...]
     [--freq FREQ] [--type TYPE] [--interval INTERVAL]
     [--keep-failed]
     [-n | --dry-run]
@@ -411,7 +411,7 @@ SHA256. Requires `BINANCE_DATATOOL_ARCHIVE_HOME` to be configured (same resoluti
 
 | Argument / Option | Type | Default | Description |
 |-------------------|------|---------|-------------|
-| `TRADE_TYPE` | `TradeType` | *(required)* | Market segment (positional argument). |
+| `MARKET_TYPE` | `MarketType` | *(required)* | Market type (positional argument). |
 | `SYMBOLS` | `list[str]` | *(see below)* | Symbols to verify, as variadic positional arguments. Same resolution rules as `list-files` and `download`. |
 | `--freq` | `DataFrequency` | `daily` | Partition frequency. |
 | `--type` | `DataType` | `klines` | Dataset type. |
@@ -561,7 +561,7 @@ User runs:
   │  summary; logs per-file failures to stderr and      │
   │  exits 2 when any ZIP fails verification.            │
   └──────────────────────┬───────────────────────────────┘
-                         │ trade_type, data_freq, data_type,
+                         │ market_type, data_freq, data_type,
                          │ symbols, archive_home, interval,
                          │ keep_failed, dry_run
   ┌──────────────────────▼───────────────────────────────┐

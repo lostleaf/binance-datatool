@@ -5,15 +5,15 @@ Verification is local-only.
 
 ## `ArchiveListSymbolsWorkflow`
 
-Fetches raw symbols via `ArchiveClient`, infers typed metadata per market segment, and
+Fetches raw symbols via `ArchiveClient`, infers typed metadata per market type, and
 optionally applies a typed symbol filter.
 
 ```python
 from binance_datatool.workflow import ArchiveListSymbolsWorkflow, ListSymbolsResult
-from binance_datatool.common import DataFrequency, DataType, SpotSymbolFilter, TradeType
+from binance_datatool.common import DataFrequency, DataType, SpotSymbolFilter, MarketType
 
 workflow = ArchiveListSymbolsWorkflow(
-    trade_type=TradeType.spot,
+    market_type=MarketType.spot,
     data_freq=DataFrequency.daily,
     data_type=DataType.klines,
     symbol_filter=SpotSymbolFilter(
@@ -26,7 +26,7 @@ result: ListSymbolsResult = await workflow.run()
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `trade_type` | *(required)* | Market segment to query. |
+| `market_type` | *(required)* | Market type to query. |
 | `data_freq` | *(required)* | Partition frequency. |
 | `data_type` | *(required)* | Dataset type. |
 | `symbol_filter` | `None` | Optional typed filter applied to inferred metadata. `None` disables filtering. |
@@ -41,7 +41,7 @@ async def run(self) -> ListSymbolsResult
 1. Calls `client.list_symbols()` for the configured market and retains the returned order
    in `raw_symbols`.
 2. Dispatches each raw symbol through `infer_spot_info` / `infer_um_info` / `infer_cm_info`
-   according to `trade_type`.
+   according to `market_type`.
 3. Separates inferred records from raw symbol names with inference failures.
 4. If `symbol_filter` is set, separates the inferred records into `matched` and
    `filtered_out` via `symbol_filter.matches()`. With no filter, all inferred records
@@ -76,10 +76,10 @@ from binance_datatool.workflow import (
     ArchiveListFilesWorkflow,
     ListFilesResult,
 )
-from binance_datatool.common import DataFrequency, DataType, TradeType
+from binance_datatool.common import DataFrequency, DataType, MarketType
 
 workflow = ArchiveListFilesWorkflow(
-    trade_type=TradeType.um,
+    market_type=MarketType.um,
     data_freq=DataFrequency.daily,
     data_type=DataType.klines,
     symbols=["BTCUSDT", "ETHUSDT"],
@@ -90,7 +90,7 @@ result: ListFilesResult = await workflow.run()
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `trade_type` | *(required)* | Market segment to query. |
+| `market_type` | *(required)* | Market type to query. |
 | `data_freq` | *(required)* | Partition frequency. |
 | `data_type` | *(required)* | Dataset type. |
 | `symbols` | *(required)* | Sequence of symbols passed to the client with the caller's original whitespace and casing. |
@@ -164,10 +164,10 @@ from binance_datatool.workflow import (
     DiffResult,
     DownloadResult,
 )
-from binance_datatool.common import DataFrequency, DataType, TradeType
+from binance_datatool.common import DataFrequency, DataType, MarketType
 
 workflow = ArchiveDownloadWorkflow(
-    trade_type=TradeType.um,
+    market_type=MarketType.um,
     data_freq=DataFrequency.monthly,
     data_type=DataType.funding_rate,
     symbols=["BTCUSDT"],
@@ -178,7 +178,7 @@ result = await workflow.run()
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `trade_type` | *(required)* | Market segment to query. |
+| `market_type` | *(required)* | Market type to query. |
 | `data_freq` | *(required)* | Partition frequency. |
 | `data_type` | *(required)* | Dataset type. |
 | `symbols` | *(required)* | Symbols to download, preserving caller order. |
@@ -297,10 +297,10 @@ from binance_datatool.workflow import (
     VerifyDiffResult,
     VerifyResult,
 )
-from binance_datatool.common import DataFrequency, DataType, TradeType
+from binance_datatool.common import DataFrequency, DataType, MarketType
 
 workflow = ArchiveVerifyWorkflow(
-    trade_type=TradeType.um,
+    market_type=MarketType.um,
     data_freq=DataFrequency.daily,
     data_type=DataType.klines,
     symbols=["BTCUSDT"],
@@ -312,7 +312,7 @@ result = workflow.run()
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `trade_type` | *(required)* | Market segment. |
+| `market_type` | *(required)* | Market type. |
 | `data_freq` | *(required)* | Partition frequency. |
 | `data_type` | *(required)* | Dataset type. |
 | `symbols` | *(required)* | Symbols to verify, preserving caller order. |

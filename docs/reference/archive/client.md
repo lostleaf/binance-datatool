@@ -30,9 +30,9 @@ client = ArchiveClient(timeout_seconds=15, trust_env=True)
 |--------|-----------|-------------|
 | `list_dir` | `async (session, prefix) -> list[str]` | List child prefixes under an S3 prefix, handling pagination automatically. |
 | `list_files_in_dir` | `async (session, prefix) -> list[ArchiveFile]` | List files directly under an S3 prefix without recursion, handling pagination automatically. |
-| `list_symbols` | `async (trade_type, data_freq, data_type) -> list[str]` | List sorted symbol names for a given archive path. Creates its own session internally. |
-| `list_symbol_files` | `async (trade_type, data_freq, data_type, symbol, interval=None, *, session=None) -> list[ArchiveFile]` | Build the S3 prefix and list every file for one symbol. Reuses a caller-supplied session when provided; otherwise creates and closes a short-lived one internally. Raises `ValueError` when `interval` does not match `data_type.has_interval_layer`. |
-| `list_symbol_files_batch` | `async (trade_type, data_freq, data_type, symbols, interval=None, *, progress_bar=False) -> dict[str, SymbolListingResult]` | List files for multiple symbols concurrently via a shared session. Returns an ordered mapping from each symbol to `(files, error)`. |
+| `list_symbols` | `async (market_type, data_freq, data_type) -> list[str]` | List sorted symbol names for a given archive path. Creates its own session internally. |
+| `list_symbol_files` | `async (market_type, data_freq, data_type, symbol, interval=None, *, session=None) -> list[ArchiveFile]` | Build the S3 prefix and list every file for one symbol. Reuses a caller-supplied session when provided; otherwise creates and closes a short-lived one internally. Raises `ValueError` when `interval` does not match `data_type.has_interval_layer`. |
+| `list_symbol_files_batch` | `async (market_type, data_freq, data_type, symbols, interval=None, *, progress_bar=False) -> dict[str, SymbolListingResult]` | List files for multiple symbols concurrently via a shared session. Returns an ordered mapping from each symbol to `(files, error)`. |
 
 `list_dir()` and `list_files_in_dir()` share one pagination implementation.
 The higher-level methods build archive prefixes for you. Listing pages are parsed
@@ -63,8 +63,13 @@ immutable.
 
 ```python
 from binance_datatool.archive import list_symbols
+from binance_datatool.common import DataFrequency, DataType, MarketType
 
-symbols = await list_symbols(TradeType.spot, DataFrequency.daily, DataType.klines)
+symbols = await list_symbols(
+    market_type=MarketType.spot,
+    data_freq=DataFrequency.daily,
+    data_type=DataType.klines,
+)
 ```
 
 Creates a temporary `ArchiveClient` and delegates to `ArchiveClient.list_symbols()`.

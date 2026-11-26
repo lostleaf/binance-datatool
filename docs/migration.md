@@ -1,5 +1,17 @@
 # Migration notes
 
+## Market type
+
+Use `MarketType` from `binance_datatool.common` or `binance_datatool.common.enums`.
+`TradeType` still resolves to the same enum and emits a `DeprecationWarning` in this release.
+Update enum imports before the next release, which removes the alias.
+
+Update public Python calls from `trade_type=` to `market_type=` when upgrading to this release.
+The old keyword raises `TypeError` even when callers use the deprecated enum import.
+
+Existing CLI command lines continue to work with the same positional values
+(`spot`, `um`, and `cm`). Command help labels the argument `MARKET_TYPE`.
+
 ## Verification dry-run
 
 For `verify --dry-run`, the terminal summary now says `already verified` where it used to say

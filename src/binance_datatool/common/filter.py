@@ -5,13 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from binance_datatool.common.enums import TradeType
+from binance_datatool.common.enums import MarketType
+from binance_datatool.common.enums import __getattr__ as __getattr__
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from binance_datatool.common.enums import ContractType
     from binance_datatool.common.types import CmSymbolInfo, SpotSymbolInfo, UmSymbolInfo
+
+    TradeType = MarketType
 
 
 @dataclass(slots=True)
@@ -96,7 +99,7 @@ SymbolFilter = SpotSymbolFilter | UmSymbolFilter | CmSymbolFilter
 
 
 def build_symbol_filter(
-    trade_type: TradeType,
+    market_type: MarketType,
     *,
     quote_assets: frozenset[str] | None,
     exclude_leverage: bool,
@@ -106,7 +109,7 @@ def build_symbol_filter(
     """Build the market-specific symbol filter.
 
     Args:
-        trade_type: Market segment for the symbol listing.
+        market_type: Market type for the symbol listing.
         quote_assets: Optional normalized quote-asset allowlist.
         exclude_leverage: Whether leveraged spot tokens should be excluded.
         exclude_stable_pairs: Whether stablecoin pairs should be excluded.
@@ -116,8 +119,8 @@ def build_symbol_filter(
         A market-specific symbol filter, or ``None`` when no applicable
         filters are enabled for the given market.
     """
-    match trade_type:
-        case TradeType.spot:
+    match market_type:
+        case MarketType.spot:
             if quote_assets is None and not exclude_leverage and not exclude_stable_pairs:
                 return None
             return SpotSymbolFilter(
@@ -125,7 +128,7 @@ def build_symbol_filter(
                 exclude_leverage=exclude_leverage,
                 exclude_stable_pairs=exclude_stable_pairs,
             )
-        case TradeType.um:
+        case MarketType.um:
             if quote_assets is None and contract_type is None and not exclude_stable_pairs:
                 return None
             return UmSymbolFilter(
@@ -133,7 +136,7 @@ def build_symbol_filter(
                 contract_type=contract_type,
                 exclude_stable_pairs=exclude_stable_pairs,
             )
-        case TradeType.cm:
+        case MarketType.cm:
             if contract_type is None:
                 return None
             return CmSymbolFilter(contract_type=contract_type)

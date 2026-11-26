@@ -14,7 +14,7 @@ from .results import ListFilesResult, SymbolListFilesResult
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from binance_datatool.common import DataFrequency, DataType, TradeType
+    from binance_datatool.common import DataFrequency, DataType, MarketType
 
 
 class ArchiveListFilesWorkflow:
@@ -27,7 +27,7 @@ class ArchiveListFilesWorkflow:
 
     def __init__(
         self,
-        trade_type: TradeType,
+        market_type: MarketType,
         data_freq: DataFrequency,
         data_type: DataType,
         symbols: Sequence[str],
@@ -38,7 +38,7 @@ class ArchiveListFilesWorkflow:
         """Initialize the workflow.
 
         Args:
-            trade_type: Market segment to query.
+            market_type: Market type to query.
             data_freq: Partition frequency.
             data_type: Dataset type.
             symbols: Symbols to list, preserving caller order.
@@ -48,7 +48,7 @@ class ArchiveListFilesWorkflow:
         """
         validate_interval(data_type, interval)
 
-        self.trade_type = trade_type
+        self.market_type = market_type
         self.data_freq = data_freq
         self.data_type = data_type
         self.symbols = list(symbols)
@@ -64,16 +64,16 @@ class ArchiveListFilesWorkflow:
             caller-provided symbol order.
         """
         logger.info(
-            "listing {} symbols for trade_type={} data_freq={} data_type={} interval={}",
+            "listing {} symbols for market_type={} data_freq={} data_type={} interval={}",
             len(self.symbols),
-            self.trade_type.value,
+            self.market_type.value,
             self.data_freq.value,
             self.data_type.value,
             self.interval,
         )
 
         outcomes = await self.client.list_symbol_files_batch(
-            self.trade_type,
+            self.market_type,
             self.data_freq,
             self.data_type,
             self.symbols,

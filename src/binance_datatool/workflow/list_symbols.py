@@ -12,7 +12,7 @@ from ._shared import infer_symbol_info
 from .results import ListSymbolsResult
 
 if TYPE_CHECKING:
-    from binance_datatool.common import DataFrequency, DataType, SymbolFilter, TradeType
+    from binance_datatool.common import DataFrequency, DataType, MarketType, SymbolFilter
 
 
 def _format_filter_values(
@@ -36,12 +36,12 @@ class ArchiveListSymbolsWorkflow:
     """Workflow for listing available symbols from the archive.
 
     Fetches raw symbols via :class:`ArchiveClient`, infers typed metadata
-    per market segment, and optionally applies a typed symbol filter.
+    per market type, and optionally applies a typed symbol filter.
     """
 
     def __init__(
         self,
-        trade_type: TradeType,
+        market_type: MarketType,
         data_freq: DataFrequency,
         data_type: DataType,
         symbol_filter: SymbolFilter | None = None,
@@ -50,14 +50,14 @@ class ArchiveListSymbolsWorkflow:
         """Initialize the workflow.
 
         Args:
-            trade_type: Market segment to query.
+            market_type: Market type to query.
             data_freq: Partition frequency.
             data_type: Dataset type.
             symbol_filter: Optional typed symbol filter for inferred metadata.
             client: Optional pre-configured archive client. A default
                 :class:`ArchiveClient` is created when ``None``.
         """
-        self.trade_type = trade_type
+        self.market_type = market_type
         self.data_freq = data_freq
         self.data_type = data_type
         self.symbol_filter = symbol_filter
@@ -74,9 +74,9 @@ class ArchiveListSymbolsWorkflow:
             self.symbol_filter
         )
         logger.info(
-            "listing symbols for trade_type={} data_freq={} data_type={} quote_assets={} "
+            "listing symbols for market_type={} data_freq={} data_type={} quote_assets={} "
             "exclude_leverage={} exclude_stable_pairs={} contract_type={}",
-            self.trade_type.value,
+            self.market_type.value,
             self.data_freq.value,
             self.data_type.value,
             quote_assets,
@@ -85,13 +85,13 @@ class ArchiveListSymbolsWorkflow:
             contract_type,
         )
         raw_symbols = await self.client.list_symbols(
-            self.trade_type, self.data_freq, self.data_type
+            self.market_type, self.data_freq, self.data_type
         )
 
         inferred = []
         inference_failures: list[str] = []
         for symbol in raw_symbols:
-            info = infer_symbol_info(self.trade_type, symbol)
+            info = infer_symbol_info(self.market_type, symbol)
             if info is None:
                 inference_failures.append(symbol)
                 continue

@@ -1,6 +1,6 @@
 # Archive availability
 
-## Datasets by market
+## Datasets by market type
 
 Each cell gives the published archive partitions (`--freq`) for a dataset (`--type`).
 A dash marks a combination with no observed directory.

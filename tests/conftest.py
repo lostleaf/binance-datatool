@@ -27,12 +27,12 @@ class FakeArchiveClient:
         self._errors = errors_by_symbol or {}
         self.last_list_symbol_files_batch_progress_bar: bool | None = None
 
-    async def list_symbols(self, trade_type, data_freq, data_type) -> list[str]:
+    async def list_symbols(self, market_type, data_freq, data_type) -> list[str]:
         return list(self._symbols)
 
     async def list_symbol_files(
         self,
-        trade_type,
+        market_type,
         data_freq,
         data_type,
         symbol,
@@ -40,14 +40,14 @@ class FakeArchiveClient:
         *,
         session=None,
     ) -> list[ArchiveFile]:
-        del trade_type, data_freq, data_type, interval, session
+        del market_type, data_freq, data_type, interval, session
         if symbol in self._errors:
             raise self._errors[symbol]
         return list(self._files.get(symbol, []))
 
     async def list_symbol_files_batch(
         self,
-        trade_type,
+        market_type,
         data_freq,
         data_type,
         symbols,
@@ -55,7 +55,7 @@ class FakeArchiveClient:
         *,
         progress_bar: bool = False,
     ) -> dict[str, tuple[list[ArchiveFile], str | None]]:
-        del trade_type, data_freq, data_type, interval
+        del market_type, data_freq, data_type, interval
         self.last_list_symbol_files_batch_progress_bar = progress_bar
         return {
             symbol: (

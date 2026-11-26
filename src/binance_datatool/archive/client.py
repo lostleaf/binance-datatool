@@ -20,16 +20,16 @@ from binance_datatool.common.progress import ProgressEvent, make_reporter
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
 
-    from binance_datatool.common.enums import DataFrequency, DataType, TradeType
+    from binance_datatool.common.enums import DataFrequency, DataType, MarketType
 
 
 def _build_prefix(
-    trade_type: TradeType,
+    market_type: MarketType,
     data_freq: DataFrequency,
     data_type: DataType,
 ) -> str:
     """Build an S3 prefix for a market archive directory."""
-    return "/".join(archive_path_parts(trade_type, data_freq, data_type)) + "/"
+    return "/".join(archive_path_parts(market_type, data_freq, data_type)) + "/"
 
 
 def _build_listing_url(prefix: str, marker: str | None = None) -> str:
@@ -234,7 +234,7 @@ class ArchiveClient:
 
     async def list_symbols(
         self,
-        trade_type: TradeType,
+        market_type: MarketType,
         data_freq: DataFrequency,
         data_type: DataType,
     ) -> list[str]:
@@ -244,14 +244,14 @@ class ArchiveClient:
         of symbol directory names under the given path parameters.
 
         Args:
-            trade_type: Market segment (spot, um, cm).
+            market_type: Market type (spot, um, cm).
             data_freq: Partition frequency (daily, monthly).
             data_type: Dataset type (klines, fundingRate, etc.).
 
         Returns:
             Sorted list of symbol names (e.g. ``["BTCUSDT", "ETHUSDT"]``).
         """
-        prefix = _build_prefix(trade_type, data_freq, data_type)
+        prefix = _build_prefix(market_type, data_freq, data_type)
 
         async with self._create_session() as session:
             child_prefixes = await self.list_dir(session, prefix)
@@ -260,7 +260,7 @@ class ArchiveClient:
 
     async def list_symbol_files(
         self,
-        trade_type: TradeType,
+        market_type: MarketType,
         data_freq: DataFrequency,
         data_type: DataType,
         symbol: str,
@@ -276,7 +276,7 @@ class ArchiveClient:
         every request reuses the same connection pool.
 
         Args:
-            trade_type: Market segment (spot, um, cm).
+            market_type: Market type (spot, um, cm).
             data_freq: Partition frequency (daily, monthly).
             data_type: Dataset type (klines, fundingRate, etc.).
             symbol: Symbol directory to list (e.g. ``"BTCUSDT"``).
@@ -298,7 +298,7 @@ class ArchiveClient:
         """
         validate_interval(data_type, interval)
         prefix = (
-            "/".join(archive_path_parts(trade_type, data_freq, data_type, symbol, interval)) + "/"
+            "/".join(archive_path_parts(market_type, data_freq, data_type, symbol, interval)) + "/"
         )
 
         if session is None:
@@ -309,7 +309,7 @@ class ArchiveClient:
 
     async def list_symbol_files_batch(
         self,
-        trade_type: TradeType,
+        market_type: MarketType,
         data_freq: DataFrequency,
         data_type: DataType,
         symbols: Sequence[str],
@@ -320,7 +320,7 @@ class ArchiveClient:
         """List files for multiple symbols concurrently via a shared session.
 
         Args:
-            trade_type: Market segment (spot, um, cm).
+            market_type: Market type (spot, um, cm).
             data_freq: Partition frequency (daily, monthly).
             data_type: Dataset type (klines, fundingRate, etc.).
             symbols: Symbols to list in caller-provided order.
@@ -343,7 +343,7 @@ class ArchiveClient:
             async def _one(symbol: str) -> tuple[str, list[ArchiveFile], str | None]:
                 try:
                     files = await self.list_symbol_files(
-                        trade_type,
+                        market_type,
                         data_freq,
                         data_type,
                         symbol,
@@ -370,7 +370,7 @@ class ArchiveClient:
 
 
 async def list_symbols(
-    trade_type: TradeType,
+    market_type: MarketType,
     data_freq: DataFrequency,
     data_type: DataType,
 ) -> list[str]:
@@ -380,11 +380,11 @@ async def list_symbols(
     delegates to :meth:`ArchiveClient.list_symbols`.
 
     Args:
-        trade_type: Market segment (spot, um, cm).
+        market_type: Market type (spot, um, cm).
         data_freq: Partition frequency (daily, monthly).
         data_type: Dataset type (klines, fundingRate, etc.).
 
     Returns:
         Sorted list of symbol names.
     """
-    return await ArchiveClient().list_symbols(trade_type, data_freq, data_type)
+    return await ArchiveClient().list_symbols(market_type, data_freq, data_type)

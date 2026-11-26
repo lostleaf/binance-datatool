@@ -11,6 +11,7 @@ For installation and usage instructions, see the [repository root README](../REA
 |----------|-------------|
 | [Architecture](architecture.md) | Layered design, data flow, S3 protocol, and key decisions. |
 | [Module Reference](reference/README.md) | Entry point for per-package API and CLI reference. |
+| [Migration notes](migration.md) | API and CLI changes that affect existing users. |
 
 ## Contributor Guides
 

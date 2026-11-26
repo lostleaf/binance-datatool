@@ -14,7 +14,7 @@ from binance_datatool.archive.client import (
     ArchiveClient,
     ArchiveFile,
 )
-from binance_datatool.common import S3_HTTP_TIMEOUT_SECONDS, DataFrequency, DataType, TradeType
+from binance_datatool.common import S3_HTTP_TIMEOUT_SECONDS, DataFrequency, DataType, MarketType
 
 if TYPE_CHECKING:
     from binance_datatool.archive.client import SymbolListingResult
@@ -71,7 +71,7 @@ async def test_archive_client_list_symbols_handles_namespaced_pages(
     )
 
     symbols = await ArchiveClient().list_symbols(
-        TradeType.spot, DataFrequency.daily, DataType.klines
+        market_type=MarketType.spot, data_freq=DataFrequency.daily, data_type=DataType.klines
     )
 
     assert symbols == ["BNBUSDT", "BTCUSDT", "ETHUSDT"]
@@ -101,7 +101,7 @@ async def test_archive_client_list_symbols_parses_xml(
     pages.append("<ListBucketResult>" + "".join(prefixes[:count]) + "</ListBucketResult>")
 
     symbols = await ArchiveClient().list_symbols(
-        TradeType.spot, DataFrequency.daily, DataType.klines
+        MarketType.spot, DataFrequency.daily, DataType.klines
     )
 
     assert symbols == {0: [], 1: ["ETHUSDT"], 3: ["BNBUSDT", "BTCUSDT", "ETHUSDT"]}[count]
@@ -128,7 +128,7 @@ async def test_archive_client_list_symbols_uses_explicit_or_file_marker(
     )
 
     symbols = await ArchiveClient().list_symbols(
-        TradeType.spot, DataFrequency.daily, DataType.klines
+        MarketType.spot, DataFrequency.daily, DataType.klines
     )
 
     assert symbols == ["BTCUSDT"]
@@ -160,7 +160,7 @@ async def test_archive_client_list_symbols_uses_trust_env(monkeypatch: pytest.Mo
     monkeypatch.setattr(ArchiveClient, "list_dir", fake_list_dir)
 
     client = ArchiveClient()
-    symbols = await client.list_symbols(TradeType.spot, DataFrequency.daily, DataType.klines)
+    symbols = await client.list_symbols(MarketType.spot, DataFrequency.daily, DataType.klines)
 
     assert symbols == ["BTCUSDT", "ETHUSDT"]
     assert captured["trust_env"] is True
@@ -190,7 +190,7 @@ async def test_archive_client_list_symbol_files_parses_xml(
     )
 
     files = await ArchiveClient().list_symbol_files(
-        TradeType.um, DataFrequency.monthly, DataType.funding_rate, "BTCUSDT"
+        MarketType.um, DataFrequency.monthly, DataType.funding_rate, "BTCUSDT"
     )
 
     expected = [
@@ -202,10 +202,10 @@ async def test_archive_client_list_symbol_files_parses_xml(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("trade_type", "data_freq", "data_type", "symbol", "interval", "expected"),
+    ("market_type", "data_freq", "data_type", "symbol", "interval", "expected"),
     [
         (
-            TradeType.spot,
+            MarketType.spot,
             DataFrequency.daily,
             DataType.klines,
             "BTCUSDT",
@@ -213,7 +213,7 @@ async def test_archive_client_list_symbol_files_parses_xml(
             "data/spot/daily/klines/BTCUSDT/1m/",
         ),
         (
-            TradeType.um,
+            MarketType.um,
             DataFrequency.monthly,
             DataType.funding_rate,
             "BTCUSDT",
@@ -221,7 +221,7 @@ async def test_archive_client_list_symbol_files_parses_xml(
             "data/futures/um/monthly/fundingRate/BTCUSDT/",
         ),
         (
-            TradeType.cm,
+            MarketType.cm,
             DataFrequency.daily,
             DataType.metrics,
             "BTCUSD_PERP",
@@ -232,7 +232,7 @@ async def test_archive_client_list_symbol_files_parses_xml(
 )
 async def test_archive_client_symbol_prefix_matches_archive_layout(
     xml_responses: XmlResponses,
-    trade_type: TradeType,
+    market_type: MarketType,
     data_freq: DataFrequency,
     data_type: DataType,
     symbol: str,
@@ -244,7 +244,11 @@ async def test_archive_client_symbol_prefix_matches_archive_layout(
     pages.append("<ListBucketResult/>")
 
     files = await ArchiveClient().list_symbol_files(
-        trade_type, data_freq, data_type, symbol, interval
+        market_type=market_type,
+        data_freq=data_freq,
+        data_type=data_type,
+        symbol=symbol,
+        interval=interval,
     )
 
     assert files == []
@@ -264,7 +268,7 @@ async def test_archive_client_list_symbol_files_normalizes_xml_text(
     )
 
     files = await ArchiveClient().list_symbol_files(
-        TradeType.um, DataFrequency.monthly, DataType.funding_rate, "BTCUSDT"
+        MarketType.um, DataFrequency.monthly, DataType.funding_rate, "BTCUSDT"
     )
 
     assert files == [ArchiveFile("data/file.zip", 1048, datetime(2026, 4, 1, 8, 6, 34, tzinfo=UTC))]
@@ -298,13 +302,16 @@ async def test_archive_client_list_symbol_files_follows_markers(
     client = ArchiveClient()
     if batch:
         outcomes = await client.list_symbol_files_batch(
-            TradeType.um, DataFrequency.monthly, DataType.funding_rate, ["BTCUSDT"]
+            market_type=MarketType.um,
+            data_freq=DataFrequency.monthly,
+            data_type=DataType.funding_rate,
+            symbols=["BTCUSDT"],
         )
         files, error = outcomes["BTCUSDT"]
         assert error is None
     else:
         files = await client.list_symbol_files(
-            TradeType.um, DataFrequency.monthly, DataType.funding_rate, "BTCUSDT"
+            MarketType.um, DataFrequency.monthly, DataType.funding_rate, "BTCUSDT"
         )
 
     assert [file.key for file in files] == ["data/BTCUSDT.zip", "data/BTCUSDT.zip.CHECKSUM"]
@@ -326,7 +333,7 @@ async def test_archive_client_list_symbols_handles_empty_truncated_pages(
         pages.append("<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>")
 
     symbols = await ArchiveClient().list_symbols(
-        TradeType.spot, DataFrequency.daily, DataType.klines
+        MarketType.spot, DataFrequency.daily, DataType.klines
     )
 
     assert symbols == []
@@ -358,7 +365,7 @@ async def test_archive_client_list_symbol_files_batch_parses_xml(
     )
 
     result = await ArchiveClient().list_symbol_files_batch(
-        TradeType.um, DataFrequency.monthly, DataType.funding_rate, ["ETHUSDT", "BTCUSDT"]
+        MarketType.um, DataFrequency.monthly, DataType.funding_rate, ["ETHUSDT", "BTCUSDT"]
     )
 
     expected = [
@@ -378,7 +385,7 @@ async def test_archive_client_list_symbol_files_rejects_non_listing_xml(
 
     with pytest.raises(ValueError):
         await ArchiveClient().list_symbol_files(
-            TradeType.um, DataFrequency.monthly, DataType.funding_rate, "BTCUSDT"
+            MarketType.um, DataFrequency.monthly, DataType.funding_rate, "BTCUSDT"
         )
 
 
@@ -394,7 +401,7 @@ async def test_archive_client_list_symbol_files_validates_interval(monkeypatch) 
 
     with pytest.raises(ValueError):
         await client.list_symbol_files(
-            TradeType.um,
+            MarketType.um,
             DataFrequency.daily,
             DataType.klines,
             "BTCUSDT",
@@ -402,7 +409,7 @@ async def test_archive_client_list_symbol_files_validates_interval(monkeypatch) 
 
     with pytest.raises(ValueError):
         await client.list_symbol_files(
-            TradeType.um,
+            MarketType.um,
             DataFrequency.monthly,
             DataType.funding_rate,
             "BTCUSDT",
@@ -438,7 +445,7 @@ async def test_archive_client_list_symbol_files_batch_preserves_order_and_shares
     }
 
     async def fake_list_symbol_files(
-        trade_type: TradeType,
+        market_type: MarketType,
         data_freq: DataFrequency,
         data_type: DataType,
         symbol: str,
@@ -446,7 +453,7 @@ async def test_archive_client_list_symbol_files_batch_preserves_order_and_shares
         *,
         session: object | None = None,
     ) -> list[ArchiveFile]:
-        del trade_type, data_freq, data_type, interval
+        del market_type, data_freq, data_type, interval
         captured_sessions.append(session)
         return per_symbol_files[symbol]
 
@@ -454,7 +461,7 @@ async def test_archive_client_list_symbol_files_batch_preserves_order_and_shares
     monkeypatch.setattr(client, "list_symbol_files", fake_list_symbol_files)
 
     result: dict[str, SymbolListingResult] = await client.list_symbol_files_batch(
-        TradeType.um,
+        MarketType.um,
         DataFrequency.monthly,
         DataType.funding_rate,
         ["ETHUSDT", "BTCUSDT"],
@@ -475,7 +482,7 @@ async def test_archive_client_batch_retains_timeout_diagnostics(
 ) -> None:
     """Exhausted bare timeouts differ from empty successes in an ordered mixed batch."""
     result = await ArchiveClient().list_symbol_files_batch(
-        TradeType.um,
+        MarketType.um,
         DataFrequency.monthly,
         DataType.funding_rate,
         ["ETHUSDT", "BNBUSDT", "BTCUSDT"],
@@ -507,7 +514,7 @@ async def test_archive_client_list_symbol_files_batch_isolates_failures(
             return None
 
     async def fake_list_symbol_files(
-        trade_type: TradeType,
+        market_type: MarketType,
         data_freq: DataFrequency,
         data_type: DataType,
         symbol: str,
@@ -515,7 +522,7 @@ async def test_archive_client_list_symbol_files_batch_isolates_failures(
         *,
         session: object | None = None,
     ) -> list[ArchiveFile]:
-        del trade_type, data_freq, data_type, interval, session
+        del market_type, data_freq, data_type, interval, session
         if symbol == "ETHUSDT":
             raise aiohttp.ClientError(message)
         return []
@@ -524,7 +531,7 @@ async def test_archive_client_list_symbol_files_batch_isolates_failures(
     monkeypatch.setattr(client, "list_symbol_files", fake_list_symbol_files)
 
     result: dict[str, SymbolListingResult] = await client.list_symbol_files_batch(
-        TradeType.um,
+        MarketType.um,
         DataFrequency.monthly,
         DataType.funding_rate,
         ["BTCUSDT", "ETHUSDT"],
@@ -551,7 +558,7 @@ async def test_archive_client_list_symbol_files_batch_propagates_cancelled_error
             return None
 
     async def fake_list_symbol_files(
-        trade_type: TradeType,
+        market_type: MarketType,
         data_freq: DataFrequency,
         data_type: DataType,
         symbol: str,
@@ -559,7 +566,7 @@ async def test_archive_client_list_symbol_files_batch_propagates_cancelled_error
         *,
         session: object | None = None,
     ) -> list[ArchiveFile]:
-        del trade_type, data_freq, data_type, symbol, interval, session
+        del market_type, data_freq, data_type, symbol, interval, session
         raise asyncio.CancelledError()
 
     monkeypatch.setattr(client, "_create_session", lambda: FakeSession())
@@ -567,7 +574,7 @@ async def test_archive_client_list_symbol_files_batch_propagates_cancelled_error
 
     with pytest.raises(asyncio.CancelledError):
         await client.list_symbol_files_batch(
-            TradeType.um,
+            MarketType.um,
             DataFrequency.monthly,
             DataType.funding_rate,
             ["BTCUSDT"],
@@ -580,7 +587,7 @@ async def test_archive_client_list_symbol_files_batch_returns_empty_dict_for_no_
     client = ArchiveClient()
 
     result = await client.list_symbol_files_batch(
-        TradeType.um,
+        MarketType.um,
         DataFrequency.monthly,
         DataType.funding_rate,
         [],
@@ -595,7 +602,7 @@ async def test_archive_client_list_symbol_files_batch_returns_empty_dict_for_no_
 async def test_archive_client_list_symbols_spot_klines_integration() -> None:
     """Spot klines listing should contain common symbols."""
     client = ArchiveClient()
-    symbols = await client.list_symbols(TradeType.spot, DataFrequency.daily, DataType.klines)
+    symbols = await client.list_symbols(MarketType.spot, DataFrequency.daily, DataType.klines)
     assert symbols == sorted(symbols)
     assert "BTCUSDT" in symbols
 

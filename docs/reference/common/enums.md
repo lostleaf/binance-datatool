@@ -1,14 +1,16 @@
 # binance_datatool.common.enums
 
-Enumerations for market segments, data frequencies, dataset types, and contract styles.
+Enumerations for market types, data frequencies, dataset types, and contract styles.
 
-**`TradeType(StrEnum)`** — Binance market segment.
+**`MarketType(StrEnum)`** — Binance market type.
 
 | Member | Value | `s3_path` | Description |
 |--------|-------|-----------|-------------|
 | `spot` | `spot` | `spot` | Spot trading market. |
 | `um` | `um` | `futures/um` | USDⓈ-M perpetual and delivery futures. |
 | `cm` | `cm` | `futures/cm` | COIN-M perpetual and delivery futures. |
+
+See the [migration notes](../../migration.md#market-type) for the enum import and keyword changes.
 
 **`DataFrequency(StrEnum)`** — Archive partition frequency.
 

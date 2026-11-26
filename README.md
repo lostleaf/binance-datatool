@@ -62,7 +62,7 @@ binance-datatool list-symbols spot --freq monthly --quote USDT --exclude-stables
 
 ## Documentation
 
-- To choose a dataset, check [availability by market and archive frequency][datasets],
+- To choose a dataset, check [availability by market type and archive frequency][datasets],
   then use `list-files` to see which archives Binance publishes for a symbol.
 - Run `binance-datatool --help` to list commands. For options and JSON output, see the [CLI reference][cli].
 - To work on Binance DataTool, see the [contributor guide][contributing].
@@ -77,7 +77,7 @@ Follow the issue for updates and the outcome. When a fix is published on PyPI, t
 note which version includes it.
 
 [skill]: https://github.com/lostleaf/binance-datatool/blob/main/skills/binance-datatool/SKILL.md
-[datasets]: https://github.com/lostleaf/binance-datatool/blob/main/skills/binance-datatool/references/archive-availability.md#datasets-by-market
+[datasets]: https://github.com/lostleaf/binance-datatool/blob/main/skills/binance-datatool/references/archive-availability.md#datasets-by-market-type
 [cli]: https://github.com/lostleaf/binance-datatool/blob/main/docs/reference/cli/archive.md
 [contributing]: https://github.com/lostleaf/binance-datatool/blob/main/docs/README.md
 [issues]: https://github.com/lostleaf/binance-datatool/issues

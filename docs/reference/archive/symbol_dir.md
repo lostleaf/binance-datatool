@@ -18,11 +18,11 @@ marker management, scanning, and cleanup.
 
 ```python
 from binance_datatool.archive import create_symbol_archive_dir
-from binance_datatool.common import DataFrequency, DataType, TradeType
+from binance_datatool.common import DataFrequency, DataType, MarketType
 
 symbol_dir = create_symbol_archive_dir(
     archive_home=Path("/data/binance_archive"),
-    trade_type=TradeType.um,
+    market_type=MarketType.um,
     data_freq=DataFrequency.daily,
     data_type=DataType.klines,
     symbol="BTCUSDT",
@@ -104,7 +104,7 @@ returns a `SymbolArchiveDir` wrapping it.
 ```python
 create_symbol_archive_dir(
     archive_home: Path,
-    trade_type: TradeType,
+    market_type: MarketType,
     data_freq: DataFrequency,
     data_type: DataType,
     symbol: str,
@@ -115,13 +115,13 @@ create_symbol_archive_dir(
 The resolved path follows the pattern:
 
 ```
-archive_home/data/{trade_type.s3_path}/{data_freq}/{data_type}/{symbol}[/{interval}]
+archive_home/data/{market_type.s3_path}/{data_freq}/{data_type}/{symbol}[/{interval}]
 ```
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `archive_home` | *(required)* | Root directory for local archive data storage. |
-| `trade_type` | *(required)* | Market segment. |
+| `market_type` | *(required)* | Market type. |
 | `data_freq` | *(required)* | Partition frequency. |
 | `data_type` | *(required)* | Dataset type. |
 | `symbol` | *(required)* | Symbol name. |

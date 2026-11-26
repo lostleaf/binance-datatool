@@ -14,18 +14,18 @@ from binance_datatool.common import (
     ContractType,
     DataFrequency,
     DataType,
+    MarketType,
     SpotSymbolInfo,
-    TradeType,
     UmSymbolInfo,
     infer_cm_info,
     infer_spot_info,
     infer_um_info,
 )
 
-ARCHIVE_ALLOWLIST: dict[TradeType, set[str]] = {
-    TradeType.spot: {"这是测试币456"},
-    TradeType.um: set(),
-    TradeType.cm: set(),
+ARCHIVE_ALLOWLIST: dict[MarketType, set[str]] = {
+    MarketType.spot: {"这是测试币456"},
+    MarketType.um: set(),
+    MarketType.cm: set(),
 }
 
 
@@ -476,15 +476,15 @@ async def test_archive_symbols_are_inferable_with_explicit_allowlist() -> None:
 
     client = ArchiveClient()
     infer_fns = {
-        TradeType.spot: infer_spot_info,
-        TradeType.um: infer_um_info,
-        TradeType.cm: infer_cm_info,
+        MarketType.spot: infer_spot_info,
+        MarketType.um: infer_um_info,
+        MarketType.cm: infer_cm_info,
     }
 
-    for trade_type, infer_fn in infer_fns.items():
-        symbols = await client.list_symbols(trade_type, DataFrequency.daily, DataType.klines)
+    for market_type, infer_fn in infer_fns.items():
+        symbols = await client.list_symbols(market_type, DataFrequency.daily, DataType.klines)
         unmatched = {symbol for symbol in symbols if infer_fn(symbol) is None}
-        assert unmatched == ARCHIVE_ALLOWLIST[trade_type]
+        assert unmatched == ARCHIVE_ALLOWLIST[market_type]
 
 
 def _expected_contract_type(payload: dict[str, Any]) -> ContractType:

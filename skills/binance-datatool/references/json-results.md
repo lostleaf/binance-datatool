@@ -28,9 +28,9 @@ flags, `symbols` contains all raw names. With any filter flag, it contains the n
 `matched`, even if the chosen market ignores the filter. Both selections can exit `0`.
 
 Every inferred record contains the strings `symbol`, `base_asset`, and `quote_asset`.
-The additional attributes depend on the market.
+The additional attributes depend on the market type.
 
-| Market | Additional attributes |
+| Market type | Additional attributes |
 |--------|-----------------------|
 | `spot` | `is_leverage` and `is_stable_pair` (booleans) |
 | `um` | `contract_type` (`perpetual` or `delivery`) and `is_stable_pair` (boolean) |

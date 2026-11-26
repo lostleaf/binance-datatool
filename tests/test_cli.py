@@ -118,9 +118,14 @@ def test_cli_help_is_available(command: list[str]) -> None:
 
 
 @pytest.mark.parametrize("command", ["list-symbols", "list-files", "download", "verify"])
-def test_cli_shared_options_keep_availability_and_defaults(command: str) -> None:
-    """Shared options retain their command availability and default values."""
+def test_cli_shared_parameters_keep_labels_and_defaults(command: str) -> None:
+    """Shared parameters retain their labels, availability, and defaults."""
     registered = get_command(app).commands[command]
+    market_argument = next(
+        parameter for parameter in registered.params if parameter.name == "market_type"
+    )
+    assert market_argument.human_readable_name == "MARKET_TYPE"
+
     options = {
         option: parameter.default
         for parameter in registered.params
@@ -439,7 +444,7 @@ def test_cli_list_symbols_does_not_warn_when_all_symbols_are_inferable(
 
 
 @pytest.mark.parametrize(
-    ("trade_type", "flags", "known_symbol"),
+    ("market_type", "flags", "known_symbol"),
     [
         ("spot", ["--quote", "USDT"], "BTCUSDT"),
         ("spot", ["--exclude-leverage"], "BTCUSDT"),
@@ -456,7 +461,7 @@ def test_cli_list_symbols_does_not_warn_when_all_symbols_are_inferable(
 def test_cli_list_symbols_warns_about_unknown_symbols_with_any_filter_flag(
     monkeypatch,
     stderr_messages,
-    trade_type: str,
+    market_type: str,
     flags: list[str],
     known_symbol: str,
     json_output: bool,
@@ -468,7 +473,7 @@ def test_cli_list_symbols_warns_about_unknown_symbols_with_any_filter_flag(
             "spot": SpotSymbolInfo("BTCUSDT", "BTC", "USDT", False, False),
             "um": UmSymbolInfo("BTCUSDT", "BTC", "USDT", ContractType.perpetual, False),
             "cm": CmSymbolInfo("BTCUSD_PERP", "BTC", "USD", ContractType.perpetual),
-        }[trade_type]
+        }[market_type]
         return ListSymbolsResult(
             matched=[known_info],
             inference_failures=["BTCZZZUNKNOWN", "ETHZZZUNKNOWN"],
@@ -482,7 +487,7 @@ def test_cli_list_symbols_warns_about_unknown_symbols_with_any_filter_flag(
     )
 
     result = runner.invoke(
-        app, ["list-symbols", trade_type, *flags, *(["--json"] if json_output else [])]
+        app, ["list-symbols", market_type, *flags, *(["--json"] if json_output else [])]
     )
 
     assert result.exit_code == 0
@@ -1280,7 +1285,7 @@ def test_cli_list_files_json_preserves_normalized_duplicate_and_file_order(
     """The real listing workflow collapses uppercase duplicate inputs in first-seen order."""
 
     async def fake_list_symbol_files(
-        self, trade_type, data_freq, data_type, symbol, interval=None, *, session=None
+        self, market_type, data_freq, data_type, symbol, interval=None, *, session=None
     ):
         return list(reversed(sample_archive_files)) if symbol == "BTCUSDT" else []
 

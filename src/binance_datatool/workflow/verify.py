@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from binance_datatool.archive.symbol_dir import SymbolScanResult
-    from binance_datatool.common import DataFrequency, DataType, TradeType
+    from binance_datatool.common import DataFrequency, DataType, MarketType
 
 
 @contextmanager
@@ -58,7 +58,7 @@ class ArchiveVerifyWorkflow:
 
     def __init__(
         self,
-        trade_type: TradeType,
+        market_type: MarketType,
         data_freq: DataFrequency,
         data_type: DataType,
         symbols: Sequence[str],
@@ -72,7 +72,7 @@ class ArchiveVerifyWorkflow:
         """Initialize the verify workflow.
 
         Args:
-            trade_type: Market segment to query.
+            market_type: Market type to query.
             data_freq: Partition frequency.
             data_type: Dataset type.
             symbols: Symbols to verify, preserving caller order.
@@ -87,7 +87,7 @@ class ArchiveVerifyWorkflow:
         """
         validate_interval(data_type, interval)
 
-        self.trade_type = trade_type
+        self.market_type = market_type
         self.data_freq = data_freq
         self.data_type = data_type
         self.symbols = list(symbols)
@@ -103,7 +103,7 @@ class ArchiveVerifyWorkflow:
         """Scan one symbol directory and classify its files."""
         dir_obj = create_symbol_archive_dir(
             self.archive_home,
-            self.trade_type,
+            self.market_type,
             self.data_freq,
             self.data_type,
             symbol,

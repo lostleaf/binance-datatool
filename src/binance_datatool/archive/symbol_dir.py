@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Collection, Sequence
     from pathlib import Path
 
-    from binance_datatool.common import DataFrequency, DataType, TradeType
+    from binance_datatool.common import DataFrequency, DataType, MarketType
 
 __all__ = ["SymbolArchiveDir", "create_symbol_archive_dir"]
 
@@ -294,7 +294,7 @@ class SymbolArchiveDir:
 
 def create_symbol_archive_dir(
     archive_home: Path,
-    trade_type: TradeType,
+    market_type: MarketType,
     data_freq: DataFrequency,
     data_type: DataType,
     symbol: str,
@@ -302,7 +302,7 @@ def create_symbol_archive_dir(
 ) -> SymbolArchiveDir:
     """Build the local directory helper that stores files for one symbol."""
     path = archive_home.joinpath(
-        *archive_path_parts(trade_type, data_freq, data_type, symbol, interval)
+        *archive_path_parts(market_type, data_freq, data_type, symbol, interval)
     )
 
     return SymbolArchiveDir(path)

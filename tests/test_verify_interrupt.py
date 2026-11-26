@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from binance_datatool.archive import SymbolArchiveDir, create_symbol_archive_dir
-from binance_datatool.common import DataFrequency, DataType, TradeType
+from binance_datatool.common import DataFrequency, DataType, MarketType
 from binance_datatool.common.progress import LogReporter
 from binance_datatool.workflow import ArchiveVerifyWorkflow
 
@@ -151,7 +151,7 @@ def run_cli(home: Path, *, interrupt=True, json_output=False, child=CHILD) -> di
 def test_verify_persists_before_progress(tmp_path, monkeypatch):
     """Acknowledged successes survive interruption before the batch completes."""
     directory = create_symbol_archive_dir(
-        tmp_path, TradeType.spot, DataFrequency.daily, DataType.trades, "BTCUSDT"
+        tmp_path, MarketType.spot, DataFrequency.daily, DataType.trades, "BTCUSDT"
     )
     directory.path.mkdir(parents=True)
     for index in range(3):
@@ -169,7 +169,7 @@ def test_verify_persists_before_progress(tmp_path, monkeypatch):
 
     monkeypatch.setattr(LogReporter, "tick", interrupt_after_success)
     workflow = ArchiveVerifyWorkflow(
-        TradeType.spot,
+        MarketType.spot,
         DataFrequency.daily,
         DataType.trades,
         ["BTCUSDT"],
@@ -202,7 +202,7 @@ def test_cli_one_sigint_retains_successes_and_resumes(tmp_path, json_output):
     assert acknowledged_names
     assert not pending_names.intersection(acknowledged_names)
     workflow = ArchiveVerifyWorkflow(
-        TradeType.spot,
+        MarketType.spot,
         DataFrequency.daily,
         DataType.trades,
         ["BTCUSDT"],
@@ -279,7 +279,7 @@ def test_verify_mixed_outcomes_use_scan_markers_and_order_failures(
         ("BTCUSDT", ["a-failed.zip", "z-passed.zip"]),
     ):
         directory = create_symbol_archive_dir(
-            tmp_path, TradeType.spot, DataFrequency.daily, DataType.trades, symbol
+            tmp_path, MarketType.spot, DataFrequency.daily, DataType.trades, symbol
         ).path
         directory.mkdir(parents=True)
         for name in names:
@@ -325,7 +325,7 @@ def test_verify_mixed_outcomes_use_scan_markers_and_order_failures(
     monkeypatch.setattr(LogReporter, "tick", observe)
     monkeypatch.setattr(Path, "glob", forbidden_glob)
     result = ArchiveVerifyWorkflow(
-        TradeType.spot,
+        MarketType.spot,
         DataFrequency.daily,
         DataType.trades,
         ["ETHUSDT", "BTCUSDT"],
@@ -358,7 +358,7 @@ def test_verify_failed_marker_write_does_not_advance_progress(tmp_path, monkeypa
     monkeypatch.setattr(SymbolArchiveDir, "write_marker", failed_write)
     with pytest.raises(OSError, match="marker creation failed"):
         ArchiveVerifyWorkflow(
-            TradeType.spot,
+            MarketType.spot,
             DataFrequency.daily,
             DataType.trades,
             ["BTCUSDT"],
@@ -383,7 +383,7 @@ def test_verify_dry_run_never_starts_workers_or_changes_files(tmp_path, monkeypa
     monkeypatch.setattr("binance_datatool.workflow.verify.ProcessPoolExecutor", forbidden)
     monkeypatch.setattr("binance_datatool.workflow.verify.verify_single_file", forbidden)
     result = ArchiveVerifyWorkflow(
-        TradeType.spot,
+        MarketType.spot,
         DataFrequency.daily,
         DataType.trades,
         ["BTCUSDT"],

@@ -58,10 +58,10 @@ Union alias `SpotSymbolFilter | UmSymbolFilter | CmSymbolFilter`.
 ## `build_symbol_filter()`
 
 ```python
-from binance_datatool.common import build_symbol_filter
+from binance_datatool.common import MarketType, build_symbol_filter
 
 symbol_filter = build_symbol_filter(
-    trade_type=TradeType.spot,
+    market_type=MarketType.spot,
     quote_assets=frozenset({"USDT"}),
     exclude_leverage=True,
     exclude_stable_pairs=False,
@@ -69,7 +69,7 @@ symbol_filter = build_symbol_filter(
 )
 ```
 
-Constructs the market-specific filter class for a given `trade_type` using only
+Constructs the market-specific filter class for a given `market_type` using only
 the arguments that apply to that market. Arguments that do not apply are
 silently ignored, for example:
 

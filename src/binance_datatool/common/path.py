@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from binance_datatool.common.enums import DataFrequency, DataType, TradeType
+    from binance_datatool.common.enums import DataFrequency, DataType, MarketType
 
 ARCHIVE_HOME_ENV_VAR = "BINANCE_DATATOOL_ARCHIVE_HOME"
 
@@ -45,7 +45,7 @@ def resolve_archive_home(override: str | Path | None = None) -> Path:
 
 
 def archive_path_parts(
-    trade_type: TradeType,
+    market_type: MarketType,
     data_freq: DataFrequency,
     data_type: DataType,
     symbol: str | None = None,
@@ -54,7 +54,7 @@ def archive_path_parts(
     """Build archive directory components for remote keys and local paths.
 
     Args:
-        trade_type: Market segment.
+        market_type: Market type.
         data_freq: Archive partition frequency.
         data_type: Dataset type.
         symbol: Optional symbol directory below the dataset prefix.
@@ -64,7 +64,7 @@ def archive_path_parts(
         Components to join with ``/`` for S3 keys or with a local ``Path``.
         Interval compatibility is validated separately at public entrypoints.
     """
-    parts = ("data", trade_type.s3_path, data_freq.value, data_type.value)
+    parts = ("data", market_type.s3_path, data_freq.value, data_type.value)
     if symbol is not None:
         parts += (symbol,)
     if interval is not None:

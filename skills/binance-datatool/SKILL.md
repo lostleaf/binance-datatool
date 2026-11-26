@@ -7,7 +7,9 @@ description: List symbols and files in Binance historical archives on data.binan
 
 Use `binance-datatool <command> --help` for the installed command's flags and dataset names.
 If the CLI is missing, install it with `pipx install binance-datatool` using Python 3.11 or later.
-Pass global options before the command. Use `-v` for progress on stderr or `-vv` for diagnostics.
+Pass global options before the command. Supply the market type (`spot`, `um`, or `cm`) as
+the first positional argument after the command. Use `-v` for progress on stderr or `-vv`
+for diagnostics.
 
 For scripts, multi-symbol results, or failure details, read the bundled
 [JSON field reference](references/json-results.md). With `--json`, capture stdout and the exit

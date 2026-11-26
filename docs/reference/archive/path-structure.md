@@ -21,9 +21,9 @@ data/
     └── daily/
 ```
 
-The first two path segments map directly to `TradeType.s3_path` and `DataFrequency`:
+The first two path segments map directly to `MarketType.s3_path` and `DataFrequency`:
 
-| `TradeType` | S3 path segment |
+| `MarketType` | S3 path segment |
 |-------------|-----------------|
 | `spot` | `data/spot/` |
 | `um` | `data/futures/um/` |
@@ -31,12 +31,12 @@ The first two path segments map directly to `TradeType.s3_path` and `DataFrequen
 
 ## Data Type Availability
 
-The next path segment is the `DataType` value. For published market and partition
-combinations, see [datasets by market](../../../skills/binance-datatool/references/archive-availability.md#datasets-by-market).
+The next path segment is the `DataType` value. For published market types and partition
+combinations, see [datasets by market type](../../../skills/binance-datatool/references/archive-availability.md#datasets-by-market-type).
 
 ## Symbol Layer
 
-`TradeType.s3_path` supplies the market path in `data/{market_path}/{data_freq}/{data_type}/{symbol}/`.
+`MarketType.s3_path` supplies the market path in `data/{market_path}/{data_freq}/{data_type}/{symbol}/`.
 
 ### Naming conventions
 

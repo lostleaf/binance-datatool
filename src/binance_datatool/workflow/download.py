@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from binance_datatool.archive import Aria2DownloadResult
-    from binance_datatool.common import DataFrequency, DataType, TradeType
+    from binance_datatool.common import DataFrequency, DataType, MarketType
 
     from .results import ListFilesResult
 
@@ -33,7 +33,7 @@ class ArchiveDownloadWorkflow:
 
     def __init__(
         self,
-        trade_type: TradeType,
+        market_type: MarketType,
         data_freq: DataFrequency,
         data_type: DataType,
         symbols: Sequence[str],
@@ -50,7 +50,7 @@ class ArchiveDownloadWorkflow:
         """Initialize the download workflow.
 
         Args:
-            trade_type: Market segment to query.
+            market_type: Market type to query.
             data_freq: Partition frequency.
             data_type: Dataset type.
             symbols: Symbols to download, preserving caller order.
@@ -67,7 +67,7 @@ class ArchiveDownloadWorkflow:
         if concurrency < 1:
             raise ValueError("concurrency must be at least 1")
         self.concurrency = concurrency
-        self.trade_type = trade_type
+        self.market_type = market_type
         self.data_freq = data_freq
         self.data_type = data_type
         self.symbols = list(symbols)
@@ -175,7 +175,7 @@ class ArchiveDownloadWorkflow:
             :class:`DownloadResult` with aggregated counts and errors.
         """
         list_workflow = ArchiveListFilesWorkflow(
-            trade_type=self.trade_type,
+            market_type=self.market_type,
             data_freq=self.data_freq,
             data_type=self.data_type,
             symbols=self.symbols,

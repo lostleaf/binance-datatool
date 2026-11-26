@@ -1,15 +1,14 @@
 """Shared enums for Binance market archive paths."""
 
+import warnings
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+__all__ = ["ContractType", "DataFrequency", "DataType", "MarketType", "TradeType"]
 
 
-class TradeType(StrEnum):
-    """Binance market segment.
-
-    Each member corresponds to a trading venue on the Binance exchange.
-    Use the ``s3_path`` property to obtain the directory component for
-    data.binance.vision archive URLs.
-    """
+class MarketType(StrEnum):
+    """Binance trading market type"""
 
     spot = "spot"  # Spot trading market
     um = "um"  # USDⓈ-M perpetual and delivery futures
@@ -17,12 +16,12 @@ class TradeType(StrEnum):
 
     @property
     def s3_path(self) -> str:
-        """Return the S3 directory path component for this trade type.
+        """Return the S3 directory path component for this market type.
 
         Returns:
             Path segment such as ``"spot"`` or ``"futures/um"``.
         """
-        if self is TradeType.spot:
+        if self is MarketType.spot:
             return "spot"
         return f"futures/{self.value}"
 
@@ -78,3 +77,20 @@ class ContractType(StrEnum):
 
     perpetual = "perpetual"  # No expiry date; position stays open until closed
     delivery = "delivery"  # Expires on a fixed settlement date (e.g. 240927)
+
+
+if TYPE_CHECKING:
+    TradeType = MarketType
+
+
+def __getattr__(name: str) -> type[MarketType]:
+    """Resolve the deprecated enum name on legacy import paths."""
+    if name == "TradeType":
+        warnings.warn(
+            "TradeType is deprecated and will be removed in the next release. "
+            "Use MarketType instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return MarketType
+    raise AttributeError(f"module has no attribute {name!r}")

@@ -9,7 +9,7 @@ import pytest
 
 from binance_datatool.archive import SymbolArchiveDir, create_symbol_archive_dir
 from binance_datatool.archive.symbol_dir import collect_markers_by_zip
-from binance_datatool.common import DataFrequency, DataType, TradeType
+from binance_datatool.common import DataFrequency, DataType, MarketType
 
 
 def _write_verify_pair(base_dir: Path, name: str) -> Path:
@@ -22,10 +22,10 @@ def _write_verify_pair(base_dir: Path, name: str) -> Path:
 
 
 @pytest.mark.parametrize(
-    ("trade_type", "data_freq", "data_type", "symbol", "interval", "expected"),
+    ("market_type", "data_freq", "data_type", "symbol", "interval", "expected"),
     [
         (
-            TradeType.spot,
+            MarketType.spot,
             DataFrequency.daily,
             DataType.klines,
             "BTCUSDT",
@@ -33,7 +33,7 @@ def _write_verify_pair(base_dir: Path, name: str) -> Path:
             Path("data/spot/daily/klines/BTCUSDT/1m"),
         ),
         (
-            TradeType.um,
+            MarketType.um,
             DataFrequency.monthly,
             DataType.funding_rate,
             "BTCUSDT",
@@ -41,7 +41,7 @@ def _write_verify_pair(base_dir: Path, name: str) -> Path:
             Path("data/futures/um/monthly/fundingRate/BTCUSDT"),
         ),
         (
-            TradeType.cm,
+            MarketType.cm,
             DataFrequency.daily,
             DataType.metrics,
             "BTCUSD_PERP",
@@ -52,7 +52,7 @@ def _write_verify_pair(base_dir: Path, name: str) -> Path:
 )
 def test_create_symbol_archive_dir_builds_expected_path(
     tmp_path: Path,
-    trade_type: TradeType,
+    market_type: MarketType,
     data_freq: DataFrequency,
     data_type: DataType,
     symbol: str,
@@ -62,7 +62,7 @@ def test_create_symbol_archive_dir_builds_expected_path(
     """The symbol directory helper should match the archive local storage layout."""
     dir_obj = create_symbol_archive_dir(
         tmp_path,
-        trade_type,
+        market_type,
         data_freq,
         data_type,
         symbol,

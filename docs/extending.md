@@ -25,7 +25,7 @@ To support a new dataset type (for example, `"premiumIndex"`):
    `DataType.has_interval_layer` and add coverage for the interval validation
    paths exercised by the CLI, workflow, and archive client.
 
-If the new member requires a non-trivial path mapping (like `TradeType.s3_path`), add a property
+If the new member requires a non-trivial path mapping (like `MarketType.s3_path`), add a property
 method to the enum class.
 
 ## Adding a New CLI Command
@@ -41,9 +41,9 @@ If the command needs new remote listings, add an `async` method to `ArchiveClien
 For local archive operations, use or extend the directory and checksum helpers in `archive/`.
 
 ```python
-async def list_dates(self, trade_type: TradeType, ...) -> list[str]:
+async def list_dates(self, market_type: MarketType, ...) -> list[str]:
     """List available date directories for a symbol."""
-    prefix = _build_prefix(trade_type, data_freq, data_type) + f"{symbol}/"
+    prefix = _build_prefix(market_type, data_freq, data_type) + f"{symbol}/"
     ...
 ```
 
@@ -57,7 +57,7 @@ typed result data. Local-only workflows can be synchronous, as `ArchiveVerifyWor
 
 ```python
 class ArchiveListDatesWorkflow:
-    def __init__(self, trade_type: TradeType, ..., client: ArchiveClient | None = None) -> None:
+    def __init__(self, market_type: MarketType, ..., client: ArchiveClient | None = None) -> None:
         ...
 
     async def run(self) -> list[str]:
@@ -80,11 +80,11 @@ See the [CLI reference](reference/cli/archive.md) for existing input and output 
 ```python
 @app.command("list-dates")
 def list_dates_command(
-    trade_type: Annotated[TradeType, typer.Argument(...)],
+    market_type: Annotated[MarketType, typer.Argument(...)],
     ...
 ) -> None:
     """List available dates for a symbol."""
-    workflow = ArchiveListDatesWorkflow(trade_type, ...)
+    workflow = ArchiveListDatesWorkflow(market_type, ...)
     for date in asyncio.run(workflow.run()):
         typer.echo(date)
 ```

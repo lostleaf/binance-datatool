@@ -7,12 +7,12 @@ Archive layout, interval validation, and local archive-home resolution.
 ```python
 from pathlib import Path
 
-from binance_datatool.common import DataFrequency, DataType, TradeType
+from binance_datatool.common import DataFrequency, DataType, MarketType
 from binance_datatool.common.path import archive_path_parts
 
 archive_home = Path("/data/binance_archive")
 parts = archive_path_parts(
-    TradeType.um, DataFrequency.daily, DataType.klines, "BTCUSDT", "1m"
+    MarketType.um, DataFrequency.daily, DataType.klines, "BTCUSDT", "1m"
 )
 # ("data", "futures/um", "daily", "klines", "BTCUSDT", "1m")
 remote_prefix = "/".join(parts) + "/"
