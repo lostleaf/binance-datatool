@@ -1,7 +1,7 @@
 # binance_datatool.workflow
 
 Business logic orchestration between the CLI and remote/local archive helpers.
-Verification is local-only. Domain meanings live in the [glossary](../../../GLOSSARY.md).
+Verification is local-only.
 
 ## `ArchiveListSymbolsWorkflow`
 
@@ -62,10 +62,9 @@ shared type.
 Input order is preserved within each bucket. `raw_symbols` preserves the full interleaving
 across buckets so unfiltered CLI output can print every directory in archive order.
 
-**Migration:** `result.unmatched_symbols` has been removed. Use
-`result.inference_failed_symbols` instead; it counts inference failures separately from
-`filtered_out_symbols`. The `unmatched` list field remains available. See the
-[API convenience decision](../../adr/0001-public-api-conveniences.md) for the compatibility trade-off.
+**Migration:** Replace `result.unmatched_symbols` with `result.inference_failed_symbols` to
+count inference failures. Use `filtered_out_symbols` for symbols rejected by the filter and
+`unmatched` for the raw names that failed inference.
 
 ## `ArchiveListFilesWorkflow`
 

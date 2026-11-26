@@ -18,9 +18,18 @@ tests/
 └── test_verify_interrupt.py    # Incremental effects and real CLI process-group signals
 ```
 
-For behavior assertions, human diagnostics, and machine-output contracts, follow the
-[coding standards](../agents/coding-standards.md#test-contracts). This page owns test placement
-and shared support.
+## Test contracts
+
+Test behavior through the smallest existing public interface that exposes the result, input
+rejection, exception type, structured data, or file effect.
+
+Assert exact machine-output contracts, including symbol lines, relative paths, TSV columns and values,
+checksum selection, dry-run plans, and clean stdout.
+
+For human help, summaries, warnings, and errors, assert emission, routing, and the underlying
+data. Preserve diagnostic payloads and their associated symbols or paths and check summary
+counts through result data. Check command and option availability through invocation or
+registration, with help smoke coverage.
 
 ## Conventions
 

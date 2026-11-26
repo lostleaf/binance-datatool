@@ -95,8 +95,7 @@ See `list_symbols_command`, `list_files_command`, `download_command`, and
 ### Step 4: Add Tests
 
 Choose the smallest existing public seam that proves the new behavior. Follow the
-[test contracts](agents/coding-standards.md#test-contracts). See [Test Organization](reference/testing.md) for directory layout,
-conventions, and shared fixtures.
+[test contracts](reference/testing.md#test-contracts) when writing assertions.
 
 ## Adding a New Sub-command Group
 

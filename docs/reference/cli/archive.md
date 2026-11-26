@@ -1,7 +1,7 @@
 # binance-datatool commands
 
 Root CLI commands for remote archive discovery and download, plus local-only SHA256 verification.
-Domain terms are defined in the [glossary](../../../GLOSSARY.md).
+See the [enum reference](../common/enums.md) for supported markets, archive frequencies, and datasets.
 
 ## Structured JSON results
 

@@ -1,8 +1,7 @@
 # Architecture
 
 `binance-datatool` discovers historical archives on `data.binance.vision`, downloads archive
-objects into local storage, and verifies ZIP files against SHA256 checksums. Domain meanings
-are defined in the root [glossary](../GLOSSARY.md).
+objects into local storage, and verifies ZIP files against SHA256 checksums.
 
 ## Package boundaries
 
@@ -17,8 +16,7 @@ facilities from lower layers directly; lower layers do not import higher ones.
 | CLI | `binance_datatool.cli` | Argument validation, workflow construction, output formatting, and exit status. |
 
 The root package exports only version metadata. Workflows are importable independently of
-Typer. The [module reference](reference/README.md) documents public interfaces and re-exports;
-[coding standards](agents/coding-standards.md) owns Python and testing conventions.
+Typer. The [module reference](reference/README.md) documents public interfaces and re-exports.
 
 ## Operations and data flow
 
