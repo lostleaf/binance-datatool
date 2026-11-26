@@ -1,25 +1,27 @@
 # Migration notes
 
-## Market type
+## 0.3.0
+
+### Market type
 
 Use `MarketType` from `binance_datatool.common` or `binance_datatool.common.enums`.
-`TradeType` still resolves to the same enum and emits a `DeprecationWarning` in this release.
+`TradeType` still resolves to the same enum and emits a `DeprecationWarning` in 0.3.0.
 Update enum imports before the next release, which removes the alias.
 
-Update public Python calls from `trade_type=` to `market_type=` when upgrading to this release.
+Update public Python calls from `trade_type=` to `market_type=` when upgrading to 0.3.0.
 The old keyword raises `TypeError` even when callers use the deprecated enum import.
 
 Existing CLI command lines continue to work with the same positional values
 (`spot`, `um`, and `cm`). Command help labels the argument `MARKET_TYPE`.
 
-## Verification dry-run
+### Verification dry-run
 
 For `verify --dry-run`, the terminal summary now says `already verified` where it used to say
 `up to date`. Update JSON consumers of this mode to read `summary.already_verified` in place of
 `summary.skipped`. The count represents ZIPs skipped because they have current verification
 markers.
 
-## Inference failures
+### Inference failures
 
 Update Python callers of `ListSymbolsResult` and scripts that read `list-symbols --json`.
 
