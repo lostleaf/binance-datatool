@@ -2,7 +2,6 @@
 
 ## Project boundaries
 
-- Before making changes, read `.AGENTS.local.md` at the repository root if it exists.
 - This package manages historical archive discovery, downloading, local storage, and SHA256
   verification. Checked-in source, tests, and configuration establish current behavior when
   documentation conflicts with them.
