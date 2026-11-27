@@ -312,7 +312,7 @@ def test_infer_spot_info(symbol: str, expected: SpotSymbolInfo) -> None:
 
 @pytest.mark.parametrize("symbol", ["XYZABC", "USDT"])
 def test_infer_spot_info_returns_none_for_invalid_symbols(symbol: str) -> None:
-    """Spot inference should reject unmatched or empty-base symbols."""
+    """Spot inference fails for an unknown quote asset or an empty base asset."""
 
     assert infer_spot_info(symbol) is None
 
@@ -472,7 +472,7 @@ def test_quote_assets_are_sorted_and_unique() -> None:
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_archive_symbols_are_inferable_with_explicit_allowlist() -> None:
-    """Archive symbol listings should only contain known unmatched exceptions."""
+    """Archive symbol inference failures should match the per-market allowlist."""
 
     client = ArchiveClient()
     infer_fns = {
@@ -483,8 +483,8 @@ async def test_archive_symbols_are_inferable_with_explicit_allowlist() -> None:
 
     for market_type, infer_fn in infer_fns.items():
         symbols = await client.list_symbols(market_type, DataFrequency.daily, DataType.klines)
-        unmatched = {symbol for symbol in symbols if infer_fn(symbol) is None}
-        assert unmatched == ARCHIVE_ALLOWLIST[market_type]
+        inference_failures = {symbol for symbol in symbols if infer_fn(symbol) is None}
+        assert inference_failures == ARCHIVE_ALLOWLIST[market_type]
 
 
 def _expected_contract_type(payload: dict[str, Any]) -> ContractType:

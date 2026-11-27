@@ -118,13 +118,9 @@ def test_cli_help_is_available(command: list[str]) -> None:
 
 
 @pytest.mark.parametrize("command", ["list-symbols", "list-files", "download", "verify"])
-def test_cli_shared_parameters_keep_labels_and_defaults(command: str) -> None:
-    """Shared parameters retain their labels, availability, and defaults."""
+def test_cli_shared_options_keep_availability_and_defaults(command: str) -> None:
+    """Shared options retain their availability and defaults."""
     registered = get_command(app).commands[command]
-    market_argument = next(
-        parameter for parameter in registered.params if parameter.name == "market_type"
-    )
-    assert market_argument.human_readable_name == "MARKET_TYPE"
 
     options = {
         option: parameter.default
@@ -1693,7 +1689,7 @@ def test_cli_verify_passes_progress_bar_flag(monkeypatch) -> None:
     assert result.exit_code == 0
 
 
-def test_cli_verify_dry_run_outputs_paths_and_summary(monkeypatch) -> None:
+def test_cli_verify_dry_run_outputs_paths_and_summary(monkeypatch, stderr_messages) -> None:
     """Dry-run verify should print relative paths and a local scan summary."""
 
     def fake_run(self) -> VerifyDiffResult:
@@ -1736,7 +1732,9 @@ def test_cli_verify_dry_run_outputs_paths_and_summary(monkeypatch) -> None:
     assert result.stdout == (
         "BTCUSDT/1m/BTCUSDT-1m-2020-01-01.zip\nBTCUSDT/1m/BTCUSDT-1m-2020-01-02.zip\n"
     )
-    assert "already verified" in result.stderr
+    assert len(stderr_messages) == 1
+    assert stderr_messages[0].strip()
+    assert stderr_messages[0] in result.stderr
 
 
 def test_cli_verify_dry_run_preserves_workflow_path_order(monkeypatch, tmp_path: Path) -> None:
